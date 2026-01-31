@@ -8,12 +8,12 @@ export const httpReq = async (inputs: ActionInput, context: ExecutionContext) =>
     let body = inputs.body;
     
     if (typeof body === "string" && body.startsWith("{")) {
-        try { body = JSON.parse(resolveVariable(body, context)); } catch(e) {}
+        try { body = JSON.parse(resolveVariable(body, context)); } catch (e) { }
     }
 
     let headers = inputs.headers || {};
     if (typeof headers === "string" && headers.startsWith("{")) {
-            try { headers = JSON.parse(resolveVariable(headers, context)); } catch(e) {}
+        try { headers = JSON.parse(resolveVariable(headers, context)); } catch (e) { }
     }
 
     console.log(`   🌐 HTTP ${method}: ${url}`);
@@ -26,4 +26,4 @@ export const httpReq = async (inputs: ActionInput, context: ExecutionContext) =>
 
     const data = await response.json();
     return { "HTTP_RESPONSE": data };
-}
+};

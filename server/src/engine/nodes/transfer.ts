@@ -21,7 +21,7 @@ export const transfer = async (inputs: ActionInput, context: ExecutionContext) =
 
     if (!to || !to.startsWith("0x")) {
         console.error(`   ❌ Invalid Address. Skipping.`);
-        return { "STATUS": "Failed" };
+        throw new Error(`Invalid Address: ${to}`);
     }
 
     try {
@@ -31,14 +31,14 @@ export const transfer = async (inputs: ActionInput, context: ExecutionContext) =
         const check = await validateBalance(accountAddress, amt.toString(), curr);
         if (!check.success) {
             console.error(`   🛑 STOP: ${check.reason}`);
-            return { "STATUS": "Failed" };
+            throw new Error(`Guard Rail Triggered: ${check.reason}`);
         }
 
         const response = await sendTestTransaction(nexusClient, to, amt.toString(), curr);
         
-        if (!response.success) {
-            return new Error("Transaction failed");
-        }
+        if (typeof response === 'object' && response.success === false) {
+         throw new Error(`Transaction Execution Failed`);
+    }
 
         const txHash = response.hash;
         context["TX_HASH"] = txHash; 
