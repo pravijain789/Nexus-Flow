@@ -2,19 +2,22 @@ import { resolveVariable } from "../variableResolver.js";
 import { parseAbi, encodeFunctionData, type Abi } from "viem";
 import { createNexusAccount } from "../smartAccount.js";
 import { type ExecutionContext } from "../variableResolver.js";
+import { Sanitize } from "../utils/inputSanitizer.js";
 
 type ActionInput = Record<string, any>;
 
 export const writeContract = async (inputs: ActionInput, context: ExecutionContext) => {
-    const address = resolveVariable(inputs.contractAddress, context);
+    const address = Sanitize.address(resolveVariable(inputs.contractAddress, context));
     const signature = resolveVariable(inputs.functionSignature, context);
     let args = inputs.args || [];
 
+    if (typeof args === "string" && (args as string).includes(",")) {
+        args = (args as string).split(",").map(s => s.trim());
+    }
+
     console.log(`   ✍️ Executing Contract Writer: ${signature} on ${address}`);
 
-    if (Array.isArray(args)) {
-        args = args.map((arg: any) => resolveVariable(arg, context));
-    }
+    args = Sanitize.array(args).map(arg => resolveVariable(arg, context));
 
     const abi = parseAbi([signature]);
         

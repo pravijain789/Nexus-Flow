@@ -1,5 +1,6 @@
 import { createPublicClient, parseAbi, http } from "viem";
 import { resolveVariable, type ExecutionContext } from "../variableResolver.js";
+import { Sanitize } from "../utils/inputSanitizer.js";
 import { sepolia } from "viem/chains";
 import dotenv from "dotenv";
 
@@ -8,10 +9,14 @@ const RPC_URL = process.env.RPC_URL as string;
 
 type ActionInput = Record<string, any>;
 export const readContract = async (inputs: ActionInput, context: ExecutionContext) => {
-    const address = resolveVariable(inputs.contractAddress, context);
+    const address = Sanitize.address(resolveVariable(inputs.contractAddress, context));
     const signature = resolveVariable(inputs.functionSignature, context);
     
     let args = inputs.args || [];
+
+    if (typeof args === "string" && (args as string).includes(",")) {
+        args = (args as string).split(",").map(s => s.trim());
+    }
 
     console.log(`   📖 Executing Contract Reader: ${signature} on ${address}`);
 

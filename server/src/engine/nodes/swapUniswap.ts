@@ -3,13 +3,15 @@ import { resolveVariable } from "../variableResolver.js";
 import { parseUnits } from "viem";
 import { encodeSwap, UNISWAP_ROUTER } from "../uniswap.js";
 import { createNexusAccount } from "../smartAccount.js";
+import { Sanitize } from "../utils/inputSanitizer.js";
 
 type ActionInput = Record<string, any>;
 
 export const swapUniswap = async (inputs: ActionInput, context: ExecutionContext) => {
-    const tokenIn = resolveVariable(inputs.tokenIn, context);
-    const tokenOut = resolveVariable(inputs.tokenOut, context);
-    const amount = resolveVariable(inputs.amountIn, context);
+    const tokenIn = Sanitize.address(resolveVariable(inputs.tokenIn, context));
+    const tokenOut = Sanitize.address(resolveVariable(inputs.tokenOut, context));
+    const rawAmount = resolveVariable(inputs.amountIn, context);
+    const amount = Sanitize.number(rawAmount);
     const recipient = resolveVariable(inputs.recipient, context);
     const decimals = inputs.tokenInDecimals || 18;
     const isNative = inputs.isNativeIn === true;
