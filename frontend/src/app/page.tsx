@@ -17,12 +17,22 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 
-import { Save, Play, Layers, Plus, Search } from "lucide-react";
+import {
+  Save,
+  Play,
+  Layers,
+  Plus,
+  Search,
+  Loader2,
+  Settings,
+} from "lucide-react";
 import NexusNode from "@/components/flow/NexusNode";
 import PropertiesPanel from "@/components/PropertiesPanel";
 import ContextMenu from "@/components/flow/ContextMenu";
 import LiveLogs from "@/components/LiveLogs";
+import SettingsModal from "@/components/SettingsModal";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
+import { useDeployment } from "@/hooks/useDeployment";
 import { NODE_TYPES, CATEGORY_COLORS } from "@/lib/nodeConfig";
 
 // Register custom node types
@@ -62,6 +72,14 @@ function NexusCanvas() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [menu, setMenu] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // --- Deployment & Settings State ---
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [globalSettings, setGlobalSettings] = useState({
+    name: "My Workflow",
+    spreadsheetId: "",
+  });
+  const { deploy, isDeploying } = useDeployment();
 
   // Undo/Redo Hook
   const { takeSnapshot, undo, redo } = useUndoRedo(nodes, edges);
@@ -105,6 +123,20 @@ function NexusCanvas() {
   }, [undo, redo, nodes, edges, setNodes, setEdges]);
 
   // --- HANDLERS ---
+
+  const handleDeploy = async () => {
+    // REMOVED: The blocking check for spreadsheetId.
+    // We now allow deployment even if ID is empty (for Webhook-only flows).
+
+    const result = await deploy(globalSettings.name, globalSettings);
+
+    if (result.success) {
+      alert("✅ Deployment Successful!");
+      console.log("Server Response:", result.data);
+    } else {
+      alert(`❌ Deployment Failed: ${result.error}`);
+    }
+  };
 
   const onPaneClick = useCallback(() => {
     setMenu(null);
@@ -414,24 +446,34 @@ function NexusCanvas() {
             <span className="text-slate-400 text-sm">
               Workflow /{" "}
               <span className="text-slate-800 font-semibold">
-                Payroll Strategy
+                {globalSettings.name}
               </span>
             </span>
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              <Settings size={14} />
+            </button>
           </div>
           <div className="flex gap-3 relative">
-            <button className="flex items-center gap-2 px-4 py-2 text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors">
-              <Save size={16} /> Save
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors"
+            >
+              <Save size={16} /> Settings
             </button>
             <button
-              className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all transform hover:scale-105"
-              onClick={() =>
-                console.log(
-                  "Deployment Config:",
-                  JSON.stringify(nodes, null, 2),
-                )
-              }
+              className={`flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all transform hover:scale-105 ${isDeploying ? "opacity-70 cursor-wait" : ""}`}
+              onClick={handleDeploy}
+              disabled={isDeploying}
             >
-              <Play size={16} /> Deploy
+              {isDeploying ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Play size={16} />
+              )}
+              {isDeploying ? "Deploying..." : "Deploy"}
             </button>
           </div>
         </div>
@@ -461,7 +503,7 @@ function NexusCanvas() {
             <Controls className="!bg-white !border-gray-200 !shadow-lg !rounded-lg" />
 
             <MiniMap
-              className="!bg-white !border-gray-200 !shadow-lg !rounded-lg"
+              className="!bg-white !border-gray-200 !shadow-lg !shadow-slate-400 !rounded-lg"
               zoomable
               pannable
               nodeColor={(n) => {
@@ -479,7 +521,6 @@ function NexusCanvas() {
               }}
             />
 
-            {/* Context Menu */}
             {menu && (
               <ContextMenu
                 onClick={onPaneClick}
@@ -509,6 +550,17 @@ function NexusCanvas() {
           onClose={() => setSelectedNodeId(null)}
         />
       )}
+
+      {/* SETTINGS MODAL */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        initialData={globalSettings}
+        onSave={(data: any) => {
+          setGlobalSettings(data);
+          setIsSettingsOpen(false);
+        }}
+      />
     </div>
   );
 }

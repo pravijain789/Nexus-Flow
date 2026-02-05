@@ -136,7 +136,7 @@ export const NODE_TYPES: Record<string, any> = {
   'discord_notify': { 
     label: 'Discord Msg', category: 'notify', icon: MessageSquare,
     inputs: [
-      { name: 'webhookUrl', label: 'Webhook URL', type: 'password' },
+      { name: 'webhookUrl', label: 'Webhook URL', type: 'text' },
       { name: 'message', label: 'Message', type: 'textarea' },
     ]
   },

@@ -1,20 +1,30 @@
 import express from "express";
 import bodyParser from "body-parser";
-import { createNexusAccount, sendTestTransaction } from "../engine/smartAccount.js";
-import { readSheet } from "../engine/sheetWatcher.js";
-import { validateBalance } from "../engine/guardRails.js";
-import { type RuleGroup, evaluateRuleGroup } from "../engine/logic.js";
+import cors from "cors"; // <--- Critical for Frontend-Backend communication
+import { readSheet, updateCell } from "../engine/sheetWatcher.js";
 import { resolveVariable, type ExecutionContext } from "../engine/variableResolver.js";
 import { NODE_REGISTRY } from "../engine/nodes/index.js";
+import { type RuleGroup, evaluateRuleGroup } from "../engine/logic.js";
+
+// Keep these for the standalone testing route /webhook/:userId
+import { createNexusAccount, sendTestTransaction } from "../engine/smartAccount.js";
+import { validateBalance } from "../engine/guardRails.js";
 
 const app: express.Application = express();
+
+// 1. ENABLE CORS & JSON PARSING
+// This allows requests from 'http://localhost:3000' (your frontend)
+app.use(cors({ origin: "*" })); 
 app.use(bodyParser.json());
 
-const PORT: number = 3000;
+// 2. RUN ON PORT 3001
+// This prevents conflict with Next.js which uses 3000 by default
+const PORT: number = 3001;
 
+// --- LEGACY / TEST ROUTE (Kept for manual testing) ---
 app.post("/webhook/:userId", async (req, res) => {
     const userId = req.params.userId;
-    console.log(`\n[Webhook] Triggered by User: ${userId}`);
+    console.log(`\n[Test Webhook] Triggered by User: ${userId}`);
 
     try {
         const nexusClient = await createNexusAccount(0);
@@ -32,8 +42,6 @@ app.post("/webhook/:userId", async (req, res) => {
         }
 
         console.log(`🤖 Smart Account Active: ${accountAddress}`);
-
-        console.log(`🚀 Initiating Transfer to ${req.body.toAddress} ...`);
         
         const response = await sendTestTransaction(
             nexusClient,
@@ -55,48 +63,85 @@ app.post("/webhook/:userId", async (req, res) => {
         console.error("❌ Execution Failed:", error);
         res.status(500).send({ error: error.message || "Transaction failed" });
     }
-})
+});
 
-app.post("/trigger-payroll", async (req, res) => {
-
+// --- THE ROBUST WORKFLOW ENGINE ---
+app.post("/trigger-workflow", async (req, res) => {
+    // 1. Get Configuration & Context
     const workflowConfig = req.body.config;
+    // Manual context comes from Webhook triggers (e.g. { "event_type": "sale", "amount": 100 })
+    const manualContext = req.body.context || {}; 
 
-    console.log("⚙️ Executing Workflow with Generic Engine...");
+    if (!workflowConfig) {
+        return res.status(400).send({ error: "Missing workflow configuration." });
+    }
+
+    console.log(`\n⚙️ Triggering Workflow: ${workflowConfig.trigger.type.toUpperCase()}`);
 
     try {
-        const rawRows = await readSheet(workflowConfig.spreadsheetId);
+        let itemsToProcess: any[] = [];
+
+        // 2. DETERMINE MODE (Batch vs Single)
         
-        const triggerCol = workflowConfig.trigger.statusColumnIndex;
-        const triggerVal = workflowConfig.trigger.statusValue;
+        // --- MODE A: GOOGLE SHEETS (Batch) ---
+        if (workflowConfig.trigger.type === "sheets") {
+            const sheetId = workflowConfig.spreadsheetId;
+            // Only enforce sheetId if the trigger is actually a SHEET
+            if (!sheetId) throw new Error("Spreadsheet ID required for Sheet triggers.");
 
-        const pendingItems = rawRows
-            .map((row, index) => ({ row, realIndex: index + 2 })) 
-            .filter(item => item.row[triggerCol] === triggerVal);
+            const rawRows = await readSheet(sheetId);
+            
+            // Default to Column F (Index 5) if not specified
+            const triggerCol = workflowConfig.trigger.colIndex !== undefined ? workflowConfig.trigger.colIndex : 5;
+            const triggerVal = workflowConfig.trigger.value || "Pending";
 
-        if (pendingItems.length === 0) {
-            return res.send({ status: "No pending items found." });   
+            // Map rows to objects and filter
+            itemsToProcess = rawRows
+                .map((row, index) => ({ row, realIndex: index + 2 })) // +2 for header offset
+                .filter(item => item.row[triggerCol] === triggerVal);
+
+            console.log(`   📊 Sheet Mode: Found ${itemsToProcess.length} pending items.`);
+        } 
+        
+        // --- MODE B: SINGLE (Webhook / Timer / Manual) ---
+        else {
+            // We treat this as a single "item" with no sheet row, but with initial context
+            itemsToProcess = [{ 
+                row: [], 
+                realIndex: -1, 
+                initialContext: manualContext 
+            }];
+            console.log(`   ⚡ Single Mode: Executing 1 run.`);
         }
 
-        console.log(`Found ${pendingItems.length} items to process.`);
+        if (itemsToProcess.length === 0) {
+            return res.send({ status: "No items to process." });
+        }
 
-        for (const item of pendingItems) {
-            const { row, realIndex } = item;
+        // 3. EXECUTION LOOP
+        let processedCount = 0;
 
-            const context: ExecutionContext = {};
-            row.forEach((val, idx) => {
-                const colLetter = String.fromCharCode(65 + idx); 
-                context[`Column_${colLetter}`] = val;
-            });
+        for (const item of itemsToProcess) {
+            // A. Build Context
+            const context: ExecutionContext = { ...item.initialContext };
             
-            context["ROW_INDEX"] = realIndex;
+            // If it's a sheet row, map columns to variables (Column_A, Column_B...)
+            if (item.row.length > 0) {
+                item.row.forEach((val: any, idx: number) => {
+                    const colLetter = String.fromCharCode(65 + idx); 
+                    context[`Column_${colLetter}`] = val;
+                });
+                context["ROW_INDEX"] = item.realIndex;
+            }
 
-            console.log(`\n📄 Processing Row ${realIndex}...`);
+            // Log start of this item
+            const identifier = item.realIndex !== -1 ? `Row ${item.realIndex}` : `Webhook Event`;
+            console.log(`\n▶️ Processing ${identifier}...`);
             
-            let workflowConfigFailed = false;
+            // B. Run Actions
             for (const action of workflowConfig.actions) {
                 
-                if (workflowConfigFailed) break;
-
+                // --- LOGIC GATE (If/Else Rules) ---
                 if (action.rules) {
                     const resolvedRules = JSON.parse(JSON.stringify(action.rules));
                     
@@ -115,43 +160,70 @@ app.post("/trigger-payroll", async (req, res) => {
                     const isAllowed = evaluateRuleGroup(resolvedRules);
                     if (!isAllowed) {
                         console.log(`   ⛔ Logic Blocked Action ${action.type}. Skipping.`);
-                        workflowConfigFailed = true;
+                        // Logic skipping implies we move to the NEXT action, 
+                        // NOT break the whole chain (unless you want strict gating).
+                        // Usually, we just skip this action.
                         continue; 
                     }
                 }
 
+                // --- NODE EXECUTION ---
                 const nodeExecutor = NODE_REGISTRY[action.type];
 
                 if (!nodeExecutor) {
-                    console.error(`   ❌ Unknown Node Type: ${action.type}`);
-                    workflowConfigFailed = true;
-                    continue;
+                    console.error(`   ❌ Critical: Unknown Node Type ${action.type}`);
+                    // Unknown node is a critical config error, stop this item.
+                    break;
                 }
 
                 try {
-                    const inputs = { ...action.inputs, spreadsheetId: workflowConfig.spreadsheetId };
+                    // Inject spreadsheetId into inputs (nodes like 'update_row' need it)
+                    // We only inject it IF it exists in the config
+                    const inputs = { 
+                        ...action.inputs, 
+                        spreadsheetId: workflowConfig.spreadsheetId || undefined
+                    };
 
                     const result = await nodeExecutor(inputs, context);
                     
+                    // Update Context with results (e.g. { TX_HASH: "0x..." })
                     if (result) {
                         Object.assign(context, result);
                     }
 
+                    // Check for "Soft Failures" returned by nodes (if they don't throw)
+                    if (result && result.STATUS === "Failed") {
+                        throw new Error("Node returned failure status");
+                    }
+
                 } catch (err: any) {
-                    workflowConfigFailed = true;
-                    console.error(`   ❌ Node ${action.type} Failed: ${err}`);
+                    console.error(`   ❌ Workflow Aborted at ${action.type}: ${err.message}`);
+                    
+                    // --- FAIL-STOP MECHANISM ---
+                    // If a node crashes, we STOP processing this specific item (Row/Webhook).
+                    
+                    // Optional: Write error back to sheet if possible
+                    if (context["ROW_INDEX"] && workflowConfig.spreadsheetId) {
+                        const colLetter = "F"; // Assumes Col F is Status
+                        const rowIndex = context["ROW_INDEX"];
+                        updateCell(workflowConfig.spreadsheetId, `Sheet1!${colLetter}${rowIndex}`, `Error: ${err.message}`)
+                            .catch(e => console.error("   ⚠️ Could not write error to sheet"));
+                    }
+                    
+                    break; // Breaks the Action Loop, moves to next Item
                 }
             }
+            processedCount++;
         }
 
-        res.send({ status: "Batch Complete", processed: pendingItems.length });
+        res.send({ status: "Workflow Complete", processed: processedCount });
 
     } catch (error: any) {
-        console.error("❌ Workflow Error:", error);
+        console.error("❌ Critical Workflow Error:", error);
         res.status(500).send({ error: error.message });
     }
 });
 
 app.listen(PORT, () => {
     console.log(`Nexus Flow Engine running on http://localhost:${PORT}`);
-})
+});
