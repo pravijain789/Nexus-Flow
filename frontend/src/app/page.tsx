@@ -53,6 +53,15 @@ const INITIAL_NODES: Node[] = [
   },
 ];
 
+const CATEGORY_HEX: Record<string, string> = {
+  trigger: "#f59e0b", // amber-500
+  web3: "#3F51B5", // indigo-500
+  data: "#10b981", // emerald-500
+  logic: "#64748b", // slate-500
+  notify: "#f43f5e", // rose-500
+  ops: "#3b82f6", // blue-500
+};
+
 export default function NexusFlowPage() {
   return (
     <ReactFlowProvider>
@@ -398,7 +407,7 @@ function NexusCanvas() {
 
         {/* Node Palette */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {["trigger", "web3", "data", "logic", "notify"].map((cat) => {
+          {["trigger", "web3", "data", "logic", "notify", "ops"].map((cat) => {
             const categoryNodes = Object.entries(NODE_TYPES).filter(
               ([type, config]) =>
                 config.category === cat &&
@@ -517,17 +526,11 @@ function NexusCanvas() {
               zoomable
               pannable
               nodeColor={(n) => {
-                const type = n.data?.type || "";
-                if (type === "webhook" || type.includes("trigger"))
-                  return "#f59e0b";
-                if (
-                  type.includes("transfer") ||
-                  type.includes("swap") ||
-                  type.includes("contract")
-                )
-                  return "#6366f1";
-                if (type.includes("notify")) return "#f43f5e";
-                return "#e2e8f0";
+                // Dynamically look up the category and use our Hex Map
+                const type = n.data?.type;
+                const config = NODE_TYPES[type];
+                const category = config?.category;
+                return category ? CATEGORY_HEX[category] : "#e2e8f0";
               }}
             />
 
@@ -558,6 +561,7 @@ function NexusCanvas() {
           selectedNode={nodes.find((n) => n.id === selectedNodeId)}
           updateData={updateNodeData}
           onClose={() => setSelectedNodeId(null)}
+          globalSettings={globalSettings}
         />
       )}
 
