@@ -5,7 +5,7 @@ type ActionInput = Record<string, any>;
 
 export const discordNotify = async (inputs: ActionInput, context: ExecutionContext) => {
     const url = resolveVariable(inputs.webhookUrl, context);
-    const message = resolveVariable(inputs.messageSent, context);
+    const message = resolveVariable(inputs.message, context);
 
     console.log(`   🔔 Executing Discord Node: Sending message...`);
 
