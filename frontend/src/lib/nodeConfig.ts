@@ -1,7 +1,7 @@
 import { 
   Zap, ArrowRightLeft, Database, Calculator, MessageSquare, Mail, 
   FileSpreadsheet, Layers, Search, Globe, Rss, Fingerprint, 
-  Variable, FileJson, Calendar, Flame, Send, GitMerge
+  Variable, FileJson, Calendar, Flame, Send, GitMerge, GitFork
 } from 'lucide-react';
 
 export const CATEGORY_COLORS: Record<string, any> = {
@@ -186,14 +186,18 @@ export const NODE_TYPES: Record<string, any> = {
     ]
   },
   'condition': {
-    label: 'If / Else', 
-    category: 'logic', 
-    icon: Calculator,
+    label: 'Condition / Logic',
+    category: 'logic',
+    icon: GitFork,
     inputs: [
-      { name: 'variable', label: 'Variable', type: 'text', placeholder: '{{Price}}' },
-      { name: 'operator', label: 'Operator', type: 'select', options: ['==', '!=', '>', '<', '>=', '<=', 'contains'] },
-      { name: 'value', label: 'Value', type: 'text', placeholder: '2000' }
-    ]
+      { 
+        name: 'rules', 
+        type: 'logic-builder', 
+        label: 'Logic Flow', 
+        required: true 
+      }
+    ],
+    outputs: [] 
   },
   'merge': {
     label: 'Merge / Wait', 

@@ -2,9 +2,31 @@ import { Job } from 'bullmq';
 import { readSheet, updateCell } from './engine/sheetWatcher.js';
 import { resolveVariable, type ExecutionContext } from './engine/variableResolver.js';
 import { NODE_REGISTRY } from './engine/nodes/index.js';
+import { evaluateRuleGroup, type RuleGroup, type LogicRule } from './engine/logic.js';
+
+// --- HELPER: RECURSIVE VARIABLE RESOLVER ---
+// Traverses the RuleGroup and replaces {{Variables}} with actual values
+const resolveRuleGroup = (group: RuleGroup, context: ExecutionContext): RuleGroup => {
+    return {
+        combinator: group.combinator,
+        rules: group.rules.map((rule: any) => {
+            // If it's a nested group, recurse
+            if ('combinator' in rule) {
+                return resolveRuleGroup(rule as RuleGroup, context);
+            }
+            
+            // If it's a rule, resolve inputs
+            const r = rule as LogicRule;
+            return {
+                operator: r.operator,
+                valueA: resolveVariable(r.valueA, context),
+                valueB: resolveVariable(r.valueB, context)
+            };
+        })
+    };
+};
 
 // --- RECURSIVE EXECUTOR ---
-// Changed: Now returns Promise<ExecutionContext> so we can capture data
 const executeChain = async (actions: any[], context: ExecutionContext, spreadsheetId?: string): Promise<ExecutionContext> => {
     
     for (const action of actions) {
@@ -15,46 +37,75 @@ const executeChain = async (actions: any[], context: ExecutionContext, spreadshe
             console.log(`   🔀 Forking into ${action.branches.length} Branches...`);
             const branches = action.branches || [];
             
-            // 1. RUN BRANCHES & CAPTURE CONTEXT
-            // We map the branches to promises that return their FINAL state
-            const results = await Promise.allSettled(branches.map(async (branch: any[], index: number) => {
-                // Clone context so branches don't fight during execution
+            const results = await Promise.allSettled(branches.map(async (branch: any[]) => {
                 const branchContext = { ...context }; 
-                
-                // Execute the branch logic
                 await executeChain(branch, branchContext, spreadsheetId);
-                
-                // CRITICAL: Return the modified context!
                 return branchContext; 
             }));
 
-            // 2. MERGE CONTEXTS (Fan-In)
             console.log(`   ⬇️ Merging Branch Data...`);
-            
             results.forEach((result, index) => {
                 if (result.status === 'fulfilled') {
-                    const branchFinalContext = result.value;
-                    
-                    // Merge strategy: Copy everything from branch back to main.
-                    // Since node IDs are unique, this safely brings back {{node_1.TX_HASH}}
-                    Object.assign(context, branchFinalContext);
-                    
+                    Object.assign(context, result.value);
                 } else {
                     console.error(`      🔴 Branch ${index + 1} Failed:`, result.reason);
                 }
             });
-
-            console.log(`   ✅ Parallel Sync Complete. Data Merged.`);
-            continue; // Move to next action in main chain
+            console.log(`   ✅ Parallel Sync Complete.`);
+            continue; 
         }
 
-        // B. CONDITION HANDLING
+        // B. CONDITION HANDLING (The Logic Upgrade)
         if (action.type === 'condition') {
-             const valA = resolveVariable(action.inputs.variable, context);
-             const valB = action.inputs.value;
-             const op = action.inputs.operator;
-             // Logic would go here
-            return context; 
+             console.log(`   ⚖️ Evaluating Logic Rules...`);
+
+             // 1. Get Rules (Support Legacy & New Format)
+             let rules = action.inputs.rules;
+             
+             // Fallback for simple/legacy nodes without groups
+             if (!rules && action.inputs.variable) {
+                 rules = {
+                    combinator: 'AND',
+                    rules: [{
+                        valueA: action.inputs.variable,
+                        operator: action.inputs.operator,
+                        valueB: action.inputs.value
+                    }]
+                 };
+             }
+
+             if (!rules) {
+                 console.warn(`      ⚠️ No rules found in condition node. Skipping.`);
+                 continue;
+             }
+
+             // 2. Resolve Variables (Recursively)
+             // We map {{Column_A}} -> 100 before evaluation
+             const resolvedRules = resolveRuleGroup(rules, context);
+
+             // 3. Evaluate Boolean Logic
+             const isTrue = evaluateRuleGroup(resolvedRules);
+             console.log(`      -> Result: ${isTrue ? "✅ TRUE" : "❌ FALSE"}`);
+
+             // 4. Branch Execution
+             // Note: In your deployment logic, the condition node is the End of the current chain.
+             // The flow continues inside the trueRoutes or falseRoutes.
+             
+             if (isTrue) {
+                 if (action.trueRoutes && action.trueRoutes.length > 0) {
+                     console.log(`      -> Following TRUE Path...`);
+                     // We await the sub-chain and return ITS context as the final result
+                     return await executeChain(action.trueRoutes, context, spreadsheetId);
+                 }
+             } else {
+                 if (action.falseRoutes && action.falseRoutes.length > 0) {
+                     console.log(`      -> Following FALSE Path...`);
+                     return await executeChain(action.falseRoutes, context, spreadsheetId);
+                 }
+             }
+
+             // If the chosen path is empty, we just return the current context
+             return context; 
         }
 
         // C. STANDARD NODE
@@ -69,10 +120,7 @@ const executeChain = async (actions: any[], context: ExecutionContext, spreadshe
             const result = await nodeExecutor(inputs, context);
             
             if (result) {
-                // Global update
                 Object.assign(context, result);
-                
-                // Namespaced update (This is what you are looking for!)
                 if (action.id) {
                     context[action.id] = { ...result };
                 }
@@ -94,7 +142,6 @@ export default async function workerProcessor(job: Job) {
     let itemsToProcess: any[] = [];
 
     try {
-        // --- MODE SETUP ---
         if (config.trigger.type === "sheets") {
             const sheetId = config.spreadsheetId;
             if (!sheetId) throw new Error("No Spreadsheet ID");
@@ -112,7 +159,6 @@ export default async function workerProcessor(job: Job) {
             console.log(`   ⚡ [PID:${process.pid}] Single Mode: Executing 1 run.`);
         }
 
-        // --- EXECUTION LOOP ---
         for (const item of itemsToProcess) {
             const context = { ...item.initialContext };
             

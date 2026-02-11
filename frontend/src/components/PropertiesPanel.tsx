@@ -9,6 +9,7 @@ import {
   Cpu,
 } from "lucide-react";
 import { NODE_TYPES, CATEGORY_COLORS } from "@/lib/nodeConfig";
+import LogicBuilder from "./LogicBuilder";
 
 export default function PropertiesPanel({
   selectedNode,
@@ -161,7 +162,22 @@ export default function PropertiesPanel({
                   )}
                 </div>
 
-                {input.type === "select" ? (
+                {/* --- INPUT TYPE SWITCHER --- */}
+
+                {/* 1. LOGIC BUILDER (New Condition Editor) */}
+                {input.type === "logic-builder" ? (
+                  <LogicBuilder
+                    value={
+                      currentData[input.name] || {
+                        combinator: "AND",
+                        rules: [],
+                      }
+                    }
+                    onChange={(val: any) => handleChange(input.name, val)}
+                    variables={variables}
+                  />
+                ) : /* 2. SELECT DROPDOWN */
+                input.type === "select" ? (
                   <select
                     className="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
                     value={currentData[input.name] || ""}
@@ -177,6 +193,7 @@ export default function PropertiesPanel({
                     ))}
                   </select>
                 ) : (
+                  /* 3. STANDARD TEXT/TEXTAREA INPUTS */
                   <div className="relative">
                     {input.type === "textarea" ? (
                       <textarea
