@@ -11,143 +11,171 @@ export const useDeployment = () => {
     const edges = getEdges();
 
     try {
-      // 1. Calculate In-Degree
-      // This counts how many incoming edges each node has.
-      // Used to identify "Merge Nodes" (In-Degree > 1).
+      // 1. Calculate In-Degree (To identify Merge Nodes)
       const inDegree = new Map<string, number>();
       edges.forEach((e) => {
         inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1);
       });
 
+      const isMergeNode = (id: string) => (inDegree.get(id) || 0) > 1;
+
       // 2. Find Trigger
       const triggerNode = nodes.find((n) =>
         ["webhook", "timer", "sheets", "read_rss"].includes(n.data.type),
       );
+      if (!triggerNode) throw new Error("No Trigger Node found.");
 
-      if (!triggerNode) {
-        throw new Error("No Trigger Node found.");
-      }
-
-      // 3. Recursive Builder (Fan-Out / Fan-In Logic)
+      // --- RECURSIVE BUILDER ---
       const buildSegment = (
         startId: string,
         visited: Set<string>,
+        stopAtMerge: boolean, // Flag: Should we stop if we hit a merge node?
       ): { actions: any[]; stoppedAt: string | null } => {
-        const segmentActions = [];
+        const actions: any[] = [];
         let currentId: string | undefined = startId;
-        let justResolvedMerge = false; // Flag to bypass stop check after successful merge
 
         while (currentId) {
           if (visited.has(currentId)) break;
 
-          // --- MERGE BARRIER CHECK ---
-          // If a node has multiple inputs, it's a Merge Point.
-          // Rule: If we just jumped here from a resolved parallel block, proceed.
-          // Otherwise, STOP. This allows the parent scope to detect the stop and handle the merge.
-          const isMergePoint = (inDegree.get(currentId) || 0) > 1;
-          const isStart = currentId === startId;
-
-          if (isMergePoint && !isStart && !justResolvedMerge) {
-            return { actions: segmentActions, stoppedAt: currentId };
+          // A. MERGE STOP CHECK
+          // If this node is a Merge Point AND we were told to stop at merges (i.e., we are inside a branch),
+          // we stop immediately. We do NOT add this node to the list.
+          if (stopAtMerge && isMergeNode(currentId)) {
+            return { actions, stoppedAt: currentId };
           }
-
-          // Reset flag after check
-          justResolvedMerge = false;
 
           visited.add(currentId);
           const node = nodes.find((n) => n.id === currentId);
           if (!node) break;
 
-          // A. CONDITION NODE (If/Else)
-          if (node.data.type === "condition") {
-            const trueEdge = edges.find(
-              (e) => e.source === node.id && e.sourceHandle === "true",
-            );
-            const falseEdge = edges.find(
-              (e) => e.source === node.id && e.sourceHandle === "false",
-            );
-
-            const trueResult = trueEdge
-              ? buildSegment(trueEdge.target, new Set(visited))
-              : { actions: [], stoppedAt: null };
-            const falseResult = falseEdge
-              ? buildSegment(falseEdge.target, new Set(visited))
-              : { actions: [], stoppedAt: null };
-
-            segmentActions.push({
-              id: node.id,
-              type: "condition",
-              inputs: { ...node.data.config },
-              trueRoutes: trueResult.actions,
-              falseRoutes: falseResult.actions,
-            });
-
-            // Conditions branch permanently in this model (unless complex merge logic added)
-            return { actions: segmentActions, stoppedAt: null };
-          }
-
-          // B. NORMAL ACTION
-          // We add the action to the list (unless it's the trigger itself)
+          // B. ADD NODE (If not trigger)
           if (!["webhook", "sheets", "timer"].includes(node.data.type)) {
-            segmentActions.push({
+            actions.push({
               id: node.id,
               type: node.data.type,
               inputs: { ...node.data.config },
             });
           }
 
-          // C. TRAVERSAL
+          // C. FIND OUTGOING
+          // Special handling for Condition Nodes vs Normal Nodes
+          if (node.data.type === "condition") {
+            const trueEdges = edges.filter(
+              (e) => e.source === node.id && e.sourceHandle === "true",
+            );
+            const falseEdges = edges.filter(
+              (e) => e.source === node.id && e.sourceHandle === "false",
+            );
+
+            // We build sub-flows for True/False paths
+            // standard "stopAtMerge: false" because condition branches usually don't merge back simply
+            const trueFlow = buildFlowFromEdges(trueEdges, new Set(visited));
+            const falseFlow = buildFlowFromEdges(falseEdges, new Set(visited));
+
+            // We replace the last action (the condition node stub) with the full condition block
+            actions.pop();
+            actions.push({
+              id: node.id,
+              type: "condition",
+              inputs: { ...node.data.config },
+              trueRoutes: trueFlow.actions,
+              falseRoutes: falseFlow.actions,
+            });
+
+            // Conditions are terminal for this linear segment builder usually
+            return { actions, stoppedAt: null };
+          }
+
+          // Standard Nodes
           const outgoing = edges.filter((e) => e.source === currentId);
 
           if (outgoing.length === 0) {
-            currentId = undefined; // End of Flow
+            currentId = undefined; // End
           } else if (outgoing.length === 1) {
-            currentId = outgoing[0].target; // Linear Flow
+            currentId = outgoing[0].target; // Linear continue
           } else {
-            // D. PARALLEL SPLIT (Fan-Out)
+            // D. PARALLEL SPLIT
+            // We have >1 outgoing edge. This is a fork.
+
+            // 1. Build all branches
+            // CRITICAL: We pass stopAtMerge=true so they stop when they hit the shared merge node
             const branches = outgoing.map((edge) =>
-              buildSegment(edge.target, new Set(visited)),
+              buildSegment(edge.target, new Set(visited), true),
             );
 
-            segmentActions.push({
-              id: `parallel_${node.id}`,
+            actions.push({
               type: "parallel",
-              branches: branches.map((r) => r.actions),
+              branches: branches.map((b) => b.actions),
             });
 
-            // E. MERGE DETECTION (Fan-In)
-            // Check if all branches stopped at the SAME node ID
+            // 2. Check for Convergence
             const stopPoints = branches
-              .map((r) => r.stoppedAt)
+              .map((b) => b.stoppedAt)
               .filter((id) => id !== null);
             const uniqueStops = [...new Set(stopPoints)];
 
-            // If we have valid branches and they all hit the exact same barrier
             if (stopPoints.length > 0 && uniqueStops.length === 1) {
-              // RESUME MAIN CHAIN
+              // E. RESUME MAIN CHAIN
+              // All branches stopped at the same node.
+              // We continue the main loop from that node.
               currentId = uniqueStops[0];
-              justResolvedMerge = true; // Signal next loop to allow processing this node
             } else {
-              // Diverged or ended
-              currentId = undefined;
+              currentId = undefined; // Diverged
             }
           }
         }
+        return { actions, stoppedAt: null };
+      };
 
-        return { actions: segmentActions, stoppedAt: null };
+      // Helper wrapper for the fan-out logic
+      const buildFlowFromEdges = (
+        outgoingEdges: Edge[],
+        visited: Set<string>,
+      ) => {
+        if (outgoingEdges.length === 0) return { actions: [], stoppedAt: null };
+
+        // If multiple edges start immediately (rare but possible condition fork)
+        if (outgoingEdges.length > 1) {
+          // Treat as parallel start
+          const branches = outgoingEdges.map((edge) =>
+            buildSegment(edge.target, new Set(visited), true),
+          );
+          // Check merge
+          const stopPoints = branches
+            .map((b) => b.stoppedAt)
+            .filter((id) => id !== null);
+          const uniqueStops = [...new Set(stopPoints)];
+
+          const actions = [
+            { type: "parallel", branches: branches.map((b) => b.actions) },
+          ];
+
+          if (uniqueStops.length === 1) {
+            const continuation = buildSegment(
+              uniqueStops[0],
+              new Set(visited),
+              false,
+            );
+            return {
+              actions: [...actions, ...continuation.actions],
+              stoppedAt: null,
+            };
+          }
+          return { actions, stoppedAt: null };
+        }
+
+        return buildSegment(outgoingEdges[0].target, visited, false);
       };
 
       // 4. Build Payload
-      const rootResult = buildSegment(triggerNode.id, new Set());
+      // We start with stopAtMerge=false because the main chain shouldn't stop arbitrarily
+      const rootResult = buildSegment(triggerNode.id, new Set(), false);
 
       const payload = {
         config: {
           spreadsheetId: globalSettings.spreadsheetId || null,
           columnMapping: globalSettings.columnMapping || {},
-          trigger: {
-            type: triggerNode.data.type,
-            ...triggerNode.data.config,
-          },
+          trigger: { type: triggerNode.data.type, ...triggerNode.data.config },
           actions: rootResult.actions,
         },
         context: { TEST_USER: "Frontend_Deploy" },
@@ -155,7 +183,6 @@ export const useDeployment = () => {
 
       console.log("🚀 Payload:", JSON.stringify(payload, null, 2));
 
-      // 5. Send to Producer API
       const response = await fetch("http://localhost:3001/trigger-workflow", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -167,7 +194,7 @@ export const useDeployment = () => {
 
       return { success: true, data: result };
     } catch (error: any) {
-      console.error("Deployment Error:", error);
+      console.error(error);
       return { success: false, error: error.message };
     } finally {
       setIsDeploying(false);

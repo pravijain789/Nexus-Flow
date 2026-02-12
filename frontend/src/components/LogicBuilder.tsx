@@ -1,7 +1,14 @@
-import React from "react";
-import { Plus, Trash2, Copy, GitMerge, ChevronDown } from "lucide-react";
+import React, { useState, useRef, useEffect } from "react";
+import {
+  Plus,
+  Trash2,
+  GitMerge,
+  Braces,
+  ChevronRight,
+  Activity,
+} from "lucide-react";
 
-// Types must match your logic.ts
+// --- TYPES ---
 type Operator = ">" | "<" | "==" | "!=" | "contains" | "is_empty";
 type LogicRule = { valueA: string; operator: Operator; valueB: string };
 type RuleGroup = { combinator: "AND" | "OR"; rules: (LogicRule | RuleGroup)[] };
@@ -9,25 +16,21 @@ type RuleGroup = { combinator: "AND" | "OR"; rules: (LogicRule | RuleGroup)[] };
 interface LogicBuilderProps {
   value: RuleGroup;
   onChange: (val: RuleGroup) => void;
-  variables: any[]; // For the autocomplete dropdown
+  variables: any[];
 }
 
+// --- MAIN COMPONENT ---
 export default function LogicBuilder({
   value,
   onChange,
   variables,
 }: LogicBuilderProps) {
-  // Initialize if empty
+  // Initialization safety
   if (!value || !value.rules) {
-    const initial: RuleGroup = { combinator: "AND", rules: [] };
-    // We defer the update to avoid render-loop, or just render initial UI
-    // Better to handle initialization in parent, but safety check here:
-    value = initial;
+    value = { combinator: "AND", rules: [] };
   }
 
-  const updateGroup = (newGroup: RuleGroup) => {
-    onChange(newGroup);
-  };
+  const updateGroup = (newGroup: RuleGroup) => onChange(newGroup);
 
   const addRule = () => {
     const newRules = [
@@ -65,7 +68,7 @@ export default function LogicBuilder({
 
   return (
     <div className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-      {/* Header: Combinator Toggle */}
+      {/* Header */}
       <div className="flex items-center gap-2">
         <button
           onClick={toggleCombinator}
@@ -77,11 +80,6 @@ export default function LogicBuilder({
         >
           {value.combinator}
         </button>
-        <span className="text-xs text-slate-400">
-          {value.combinator === "AND"
-            ? "All must be true"
-            : "At least one must be true"}
-        </span>
       </div>
 
       {/* Rules List */}
@@ -89,7 +87,7 @@ export default function LogicBuilder({
         {value.rules.map((rule, idx) => (
           <div key={idx} className="relative group">
             {"combinator" in rule ? (
-              // RECURSIVE GROUP
+              // Nested Group
               <div className="relative">
                 <LogicBuilder
                   value={rule as RuleGroup}
@@ -104,9 +102,9 @@ export default function LogicBuilder({
                 </button>
               </div>
             ) : (
-              // SINGLE RULE ROW
-              <div className="flex items-center gap-2 bg-white p-2 border border-slate-200 rounded shadow-sm">
-                {/* Variable A Picker */}
+              // Single Rule Row
+              <div className="flex items-center gap-2 bg-white p-2 border border-slate-200 rounded shadow-sm z-10 relative">
+                {/* Variable A (With Picker) */}
                 <VariableInput
                   value={(rule as LogicRule).valueA}
                   onChange={(v) =>
@@ -135,7 +133,7 @@ export default function LogicBuilder({
                   <option value="is_empty">empty</option>
                 </select>
 
-                {/* Value B Input */}
+                {/* Value B (With Picker) */}
                 <VariableInput
                   value={(rule as LogicRule).valueB}
                   onChange={(v) =>
@@ -145,7 +143,7 @@ export default function LogicBuilder({
                   placeholder="Value"
                 />
 
-                {/* Remove Button */}
+                {/* Remove */}
                 <button
                   onClick={() => removeIndex(idx)}
                   className="text-slate-300 hover:text-red-500"
@@ -156,16 +154,9 @@ export default function LogicBuilder({
             )}
           </div>
         ))}
-
-        {/* Empty State */}
-        {value.rules.length === 0 && (
-          <div className="text-center py-2 text-[10px] text-slate-400 italic border border-dashed rounded">
-            No rules defined
-          </div>
-        )}
       </div>
 
-      {/* Footer Actions */}
+      {/* Footer Buttons */}
       <div className="flex gap-2 mt-1">
         <button
           onClick={addRule}
@@ -184,19 +175,88 @@ export default function LogicBuilder({
   );
 }
 
-// Helper Sub-Component for Inputs with Variable Suggestions
+// --- SUB-COMPONENT: SMART INPUT WITH PICKER ---
 const VariableInput = ({ value, onChange, variables, placeholder }: any) => {
-  // You can enhance this with the same dropdown logic from PropertiesPanel
-  // For now, keeping it simple text input that accepts {{...}}
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const insertVar = (varName: string, nodeId?: string) => {
+    // Format: {{node_123.TX_HASH}} or {{Column_A}}
+    const formatted = nodeId ? `{{${nodeId}.${varName}}}` : `{{${varName}}}`;
+
+    // Append to existing text
+    onChange(`${value}${formatted}`);
+    setIsOpen(false);
+  };
+
   return (
-    <div className="relative flex-1 min-w-[80px]">
+    <div ref={wrapperRef} className="relative flex-1 min-w-[100px]">
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full text-xs p-1 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none"
+        className="w-full text-xs p-1.5 pr-6 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none font-mono text-slate-700"
       />
+
+      {/* The { } Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="absolute right-0 top-1 p-0.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded"
+        title="Insert Variable"
+      >
+        <Braces size={12} />
+      </button>
+
+      {/* The Dropdown Menu */}
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-1 w-64 max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] animate-in fade-in zoom-in-95 duration-100">
+          <div className="bg-slate-50 px-2 py-1.5 border-b border-gray-100 text-[10px] font-bold text-slate-500 uppercase">
+            Select Variable
+          </div>
+          {variables.length === 0 ? (
+            <div className="p-3 text-center text-[10px] text-slate-400">
+              No variables found
+            </div>
+          ) : (
+            variables.map((v: any, idx: number) => (
+              <button
+                key={idx}
+                onClick={() => insertVar(v.name, v.nodeId)}
+                className="w-full text-left px-3 py-2 hover:bg-indigo-50 flex items-center gap-2 border-b border-gray-50 last:border-0 group"
+              >
+                <div
+                  className={`p-1 rounded shrink-0 ${v.icon === "sheet" ? "bg-emerald-100 text-emerald-600" : "bg-indigo-100 text-indigo-600"}`}
+                >
+                  <Activity size={10} />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] font-bold text-slate-700 font-mono truncate group-hover:text-indigo-700">
+                    {v.name}
+                  </span>
+                  <span className="text-[9px] text-slate-400 truncate w-32">
+                    {v.desc}
+                  </span>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 };

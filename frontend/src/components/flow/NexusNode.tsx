@@ -1,6 +1,6 @@
 import React, { memo, useMemo } from "react";
 import { Handle, Position, NodeProps } from "reactflow";
-import { AlertCircle, Play } from "lucide-react";
+import { AlertCircle, Play, GitMerge } from "lucide-react";
 import { NODE_TYPES, CATEGORY_COLORS } from "@/lib/nodeConfig";
 
 const NexusNode = ({ data, selected }: NodeProps) => {
@@ -31,32 +31,43 @@ const NexusNode = ({ data, selected }: NodeProps) => {
     return (
       <div
         className={`
-          relative w-12 h-12 flex items-center justify-center rounded-full bg-white border-2 shadow-md transition-all duration-200
+          relative w-12 h-12 -top-1.5 rounded-full bg-white border-2 shadow-md transition-all duration-200 group
           ${selected ? "ring-2 ring-indigo-500 border-indigo-500 scale-110 z-10" : "border-slate-300"}
           hover:shadow-lg hover:border-indigo-400
         `}
         title="Merge / Wait"
       >
-        <div className="text-slate-600">
-          <Icon size={20} />
+        {/* Icon Centering */}
+        <div className="absolute inset-0 flex items-center justify-center text-slate-600">
+          {Icon ? <Icon size={20} /> : <GitMerge size={20} />}
         </div>
 
-        {/* Input Handle (Accepts multiple connections) */}
+        {/* Input Handle - Fixed Alignment to match Rectangular nodes (-9px) */}
         <Handle
           type="target"
           position={Position.Left}
-          className="!w-3 !h-3 !border-2 !border-white !bg-slate-400 hover:scale-125 -ml-[8px]"
+          className="!w-3 !h-3 !border-2 !border-white !bg-indigo-400 hover:scale-125 transition-transform absolute"
+          style={{
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            left: -9, // Changed from -1 to -9 to stick out matching others
+          }}
         />
 
-        {/* Output Handle */}
+        {/* Output Handle - Fixed Alignment */}
         <Handle
           type="source"
           position={Position.Right}
-          className="!w-3 !h-3 !border-2 !border-white !bg-slate-400 hover:scale-125 -mr-[8px]"
+          className="!w-3 !h-3 !border-2 !border-white !bg-indigo-400 hover:scale-125 transition-transform absolute"
+          style={{
+            top: "50%",
+            transform: "translate(50%, -50%)",
+            right: -9, // Changed from -1 to -9
+          }}
         />
 
         {/* Label (Floating below) */}
-        <div className="absolute -bottom-6 w-32 text-center left-1/2 -translate-x-1/2 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+        <div className="absolute -bottom-6 w-32 text-center left-1/2 -translate-x-1/2 text-[9px] font-bold text-slate-400 uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
           Merge
         </div>
       </div>
@@ -139,14 +150,16 @@ const NexusNode = ({ data, selected }: NodeProps) => {
         <Handle
           type="target"
           position={Position.Left}
-          className="!w-3 !h-3 !border-2 !border-white transition-transform duration-200 hover:scale-125 -ml-[7px]"
-          style={{ backgroundColor: getHandleColor(config.category) }}
+          className="!w-3 !h-3 !border-2 !border-white transition-transform duration-200 hover:scale-125"
+          // Ensure this matches the circle offset
+          style={{ backgroundColor: getHandleColor(config.category), left: -9 }}
         />
       )}
 
       {type === "condition" ? (
         <>
-          <div className="absolute -right-[7px] top-1/2 -translate-y-4 flex items-center group/true">
+          {/* True Handle */}
+          <div className="absolute -right-[9px] top-1/2 -translate-y-4 flex items-center group/true">
             <span className="text-[9px] font-bold text-green-600 mr-2 bg-white/90 px-1 rounded opacity-0 group-hover/true:opacity-100 transition-opacity pointer-events-none">
               TRUE
             </span>
@@ -155,10 +168,11 @@ const NexusNode = ({ data, selected }: NodeProps) => {
               type="source"
               position={Position.Right}
               className="!relative !w-3 !h-3 !border-2 !border-white !bg-green-500 hover:scale-125 transition-transform"
-              style={{ top: 0, transform: "none" }}
+              style={{ top: 0, transform: "none", right: 0 }}
             />
           </div>
-          <div className="absolute -right-[7px] top-1/2 translate-y-4 flex items-center group/false">
+          {/* False Handle */}
+          <div className="absolute -right-[9px] top-1/2 translate-y-4 flex items-center group/false">
             <span className="text-[9px] font-bold text-red-500 mr-2 bg-white/90 px-1 rounded opacity-0 group-hover/false:opacity-100 transition-opacity pointer-events-none">
               FALSE
             </span>
@@ -167,7 +181,7 @@ const NexusNode = ({ data, selected }: NodeProps) => {
               type="source"
               position={Position.Right}
               className="!relative !w-3 !h-3 !border-2 !border-white !bg-red-500 hover:scale-125 transition-transform"
-              style={{ top: 0, transform: "none" }}
+              style={{ top: 0, transform: "none", right: 0 }}
             />
           </div>
         </>
@@ -175,8 +189,12 @@ const NexusNode = ({ data, selected }: NodeProps) => {
         <Handle
           type="source"
           position={Position.Right}
-          className="!w-3 !h-3 !border-2 !border-white transition-transform duration-200 hover:scale-125 -mr-[7px]"
-          style={{ backgroundColor: getHandleColor(config.category) }}
+          className="!w-3 !h-3 !border-2 !border-white transition-transform duration-200 hover:scale-125"
+          // Ensure this matches the circle offset
+          style={{
+            backgroundColor: getHandleColor(config.category),
+            right: -9,
+          }}
         />
       )}
     </div>
