@@ -13,6 +13,11 @@ import { resolveENS } from "./resolveENS.js";
 import { httpReq } from "./httpReq.js";
 import { extractJson } from "./jsonExtractor.js";
 import { mergeNode } from "./mergeNodes.js";
+import { formatDate } from "./formatData.js";
+import { dataTransformer } from "./dataTransformer.js";
+import { readRSS } from "./rssReader.js";
+import { getAaveSupply } from "./aaveSupply.js";
+import { httpScraper } from "./httpScraper.js";
 
 export const NODE_REGISTRY: Record<string, Function> = {
     "transfer": transfer,    
@@ -30,4 +35,9 @@ export const NODE_REGISTRY: Record<string, Function> = {
     "http_request": httpReq,
     "json_extract": extractJson,
     "merge": mergeNode,
+    "format_date": formatDate,
+    "transform_data": dataTransformer,
+    "read_rss": readRSS,
+    "aave_supply": getAaveSupply,
+    "http_scraper": httpScraper
 };

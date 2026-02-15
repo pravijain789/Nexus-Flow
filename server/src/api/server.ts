@@ -1,10 +1,11 @@
 import express from "express";
 import bodyParser from "body-parser";
 import cors from "cors";
-import http from "http"; // Required for Socket.io
-import { Server } from "socket.io"; // Socket.io Server
+import http from "http"; 
+import { Server } from "socket.io"; 
 import { workflowQueue } from "../queue/workflowQueue.js";
-import { redisConnection } from "../config/redis.js"; // Reuse existing connection config
+import { redisConnection } from "../config/redis.js"; 
+import { NODE_REGISTRY } from "../engine/nodes/index.js";
 
 const app: express.Application = express();
 
@@ -94,6 +95,28 @@ app.post("/trigger-workflow", async (req, res) => {
     } catch (error: any) {
         console.error("❌ API Error:", error);
         res.status(500).send({ error: "Failed to queue workflow" });
+    }
+});
+
+app.post('/test-node', async (req, res) => {
+    try {
+        const { type, config } = req.body;
+        
+        const nodeExecutor = NODE_REGISTRY[type];
+        if (!nodeExecutor) {
+            return res.status(400).json({ success: false, error: `Unknown node type: ${type}` });
+        }
+
+        const mockContext = { 
+            TEST_MODE: true,
+        };
+
+        const result = await nodeExecutor(config, mockContext);
+        
+        res.json({ success: true, data: result });
+    } catch (error: any) {
+        console.error(`Test Node Error (${req.body.type}):`, error.message);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
