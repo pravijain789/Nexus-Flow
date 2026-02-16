@@ -6,7 +6,6 @@ export const useDeployment = () => {
   const { getNodes, getEdges } = useReactFlow();
 
   // --- SHARED HELPER: BUILDS THE JSON PAYLOAD ---
-  // We extract this so both deploy() and hotReload() can use the exact same logic
   const buildWorkflowPayload = (
     nodes: Node[],
     edges: Edge[],
@@ -243,5 +242,52 @@ export const useDeployment = () => {
     }
   };
 
-  return { deploy, hotReload, isDeploying };
+  // --- EXPORT 3: MANUAL RUN ("Run Now") ---
+  const runNow = async (workflowName: string, globalSettings: any) => {
+    setIsDeploying(true);
+    const nodes = getNodes();
+    const edges = getEdges();
+
+    try {
+      const config = buildWorkflowPayload(
+        nodes,
+        edges,
+        workflowName,
+        globalSettings,
+      );
+
+      const payload = {
+        isTestRun: true,
+        config,
+        context: {
+          TEST_USER: "Frontend_Manual_Run",
+          // Injecting mock payload to prevent Webhook variable resolution from crashing
+          WebhookBody: {
+            test: true,
+            amount: 100,
+            email: "test@example.com",
+            message: "Manual Test Run",
+          },
+        },
+      };
+
+      const response = await fetch("http://localhost:3001/trigger-workflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Server Error");
+
+      return { success: true, ...result };
+    } catch (error: any) {
+      console.error(error);
+      return { success: false, error: error.message };
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  return { deploy, hotReload, runNow, isDeploying };
 };

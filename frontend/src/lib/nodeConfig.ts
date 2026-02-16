@@ -18,7 +18,15 @@ export const NODE_TYPES: Record<string, any> = {
   // --- TRIGGERS ---
   'webhook': { 
     label: 'Webhook Trigger', category: 'trigger', icon: Zap,
-    inputs: [{ name: 'triggerId', label: 'Webhook ID', type: 'text', readOnly: true }] 
+    inputs: [
+      { 
+        name: '_info', 
+        label: 'How to use', 
+        type: 'textarea', 
+        readOnly: true,
+        placeholder: "1. Name your workflow in Settings.\n2. Click Deploy.\n3. Send POST requests to:\nhttp://localhost:3001/webhook/workflow_[your_workflow_name]\n\nAccess payload variables using: {{WebhookBody.your_field}}"
+      } 
+    ] 
   },
   'sheets': {
     label: 'G-Sheet Watcher', category: 'trigger', icon: FileSpreadsheet, 
@@ -128,6 +136,17 @@ export const NODE_TYPES: Record<string, any> = {
       { name: 'RSS_PUBDATE', desc: 'Publish Date' }
     ]
   },
+  'http_scraper': { 
+    label: 'Web Scraper', category: 'data', icon: Globe,
+    inputs: [
+      { name: 'url', label: 'Page URL', type: 'text', placeholder: 'https://...' },
+      { name: 'selector', label: 'CSS Selector (Opt)', type: 'text', placeholder: 'article, .main-content', required: false },
+    ],
+    outputs: [
+      { name: 'SCRAPED_TITLE', desc: 'Page Title' },
+      { name: 'SCRAPED_CONTENT', desc: 'Cleaned Text Content' }
+    ]
+  },
 
   // --- LOGIC ---
   'math_operation': { 
@@ -227,16 +246,5 @@ export const NODE_TYPES: Record<string, any> = {
       { name: '_info', label: 'Behavior', type: 'text', placeholder: 'Waits for all branches', readOnly: true }
     ],
     outputs: [] // No specific outputs, it passes context through
-  },
-  'http_scraper': { 
-    label: 'Web Scraper', category: 'data', icon: Globe,
-    inputs: [
-      { name: 'url', label: 'Page URL', type: 'text', placeholder: 'https://...' },
-      { name: 'selector', label: 'CSS Selector (Opt)', type: 'text', placeholder: 'article, .main-content', required: false },
-    ],
-    outputs: [
-      { name: 'SCRAPED_TITLE', desc: 'Page Title' },
-      { name: 'SCRAPED_CONTENT', desc: 'Cleaned Text Content' }
-    ]
-  },
+  }
 };

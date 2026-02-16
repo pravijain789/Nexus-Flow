@@ -57,7 +57,6 @@ redisSubscriber.on('message', (channel, message) => {
         try {
             const event = JSON.parse(message);
             // Broadcast ONLY to clients watching this Job ID
-            // console.log(`   📡 Forwarding event: ${event.type} for Job ${event.jobId}`);
             io.to(event.jobId).emit('workflow_update', event);
         } catch (err) {
             console.error("❌ Failed to parse Redis message:", err);
@@ -65,27 +64,85 @@ redisSubscriber.on('message', (channel, message) => {
     }
 });
 
-// --- API ROUTE: PRODUCER ---
+// --- API ROUTE: PRODUCER (DEPLOY & TEST) ---
 app.post("/trigger-workflow", async (req, res) => {
-    const workflowConfig = req.body.config;
-    const manualContext = req.body.context || {}; 
+    // 🟢 EXTRACT isTestRun FLAG
+    const { config: workflowConfig, context: manualContext = {}, isTestRun } = req.body; 
 
     if (!workflowConfig) {
         return res.status(400).send({ error: "Missing workflow configuration." });
     }
 
     try {
-        console.log(`\n📥 Received Job: [${workflowConfig.trigger.type.toUpperCase()}]`);
+        console.log(`\n📥 Received Job: [${workflowConfig.trigger?.type?.toUpperCase() || 'UNKNOWN'}]`);
 
         // Create a persistent ID based on workflow name or timestamp
         const safeName = (workflowConfig.workflowName || "default").replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-        const isTimer = workflowConfig.trigger && workflowConfig.trigger.type === 'timer';
-        const workflowId = isTimer ? `cron_workflow_${safeName}` : `job_${Date.now()}`;
+        
+        const triggerType = workflowConfig.trigger?.type;
+        const isTimer = triggerType === 'timer';
+        const isWebhook = triggerType === 'webhook';
+        
+        let workflowId = `job_${Date.now()}`;
+        if (isTimer) {
+            workflowId = `cron_workflow_${safeName}`;
+        } else if (isWebhook) {
+            workflowId = `workflow_${safeName}`;
+        }
 
         // 🟢 THE HOT RELOAD FIX: Save the configuration to Redis instead of BullMQ!
         await redisConnection.set(`workflow_config:${workflowId}`, JSON.stringify(workflowConfig));
 
-        // --- HANDLE SCHEDULED JOBS (TIMER) ---
+        // --- 🚀 HANDLE "RUN NOW" MANUAL OVERRIDE ---
+        if (isTestRun) {
+            const immediateId = `test_run_${Date.now()}`;
+            
+            // Inject a mock payload so Webhook variables don't crash the test
+            const testContext = {
+                ...manualContext,
+                WebhookBody: { 
+                    test: true, 
+                    amount: 100, 
+                    email: "test@example.com", 
+                    message: "Manual Test Run",
+                    // Add dummy data for other common webhook structures just in case
+                    data: { id: "test_123", status: "succeeded" }
+                }
+            };
+
+            await workflowQueue.add(
+                'execute-workflow', 
+                { 
+                    context: testContext, 
+                    requestedAt: new Date().toISOString(),
+                    workflowId: workflowId, // Must pass the base ID so worker fetches correct config
+                    executionId: immediateId // Explicit room ID for Socket broadcasting
+                }, 
+                { jobId: immediateId } // Unique Job ID for this execution
+            );
+            
+            console.log(`🚀 Manual Test Run Queued: ${immediateId}`);
+            return res.status(202).send({ 
+                success: true, 
+                message: "Test run started!", 
+                jobId: immediateId 
+            });
+        }
+
+        // --- 1. HANDLE WEBHOOK DEPLOYMENTS ---
+        if (isWebhook) {
+            const webhookUrl = `http://localhost:${PORT}/webhook/${workflowId}`;
+            console.log(`🔗 Webhook Deployed! Listening at: ${webhookUrl}`);
+            
+            return res.status(202).send({ 
+                success: true, 
+                message: "Webhook Active!", 
+                webhookUrl: webhookUrl, 
+                jobId: workflowId 
+            });
+        }
+
+        // --- 2. HANDLE SCHEDULED JOBS (TIMER) ---
         if (isTimer) {
             const { scheduleType, intervalMinutes, cronExpression } = workflowConfig.trigger;
             let repeatOpts: any = {};
@@ -137,7 +194,7 @@ app.post("/trigger-workflow", async (req, res) => {
             });
         }
 
-        // --- STANDARD IMMEDIATE JOBS (Webhook, Manual Deploy, etc.) ---
+        // --- 3. STANDARD IMMEDIATE JOBS (Manual Deploy, etc.) ---
         const job = await workflowQueue.add(
             'execute-workflow', 
             {
@@ -165,7 +222,51 @@ app.post("/trigger-workflow", async (req, res) => {
     }
 });
 
-// --- NEW API ROUTE: HOT RELOAD ---
+// --- THE WEBHOOK RECEIVER ---
+app.post('/webhook/:workflowId', async (req, res) => {
+    const { workflowId } = req.params;
+
+    try {
+        // 1. Check if this workflow exists and is deployed
+        const configString = await redisConnection.get(`workflow_config:${workflowId}`);
+        if (!configString) {
+            return res.status(404).json({ error: "Webhook not found. Has this workflow been deployed?" });
+        }
+
+        // 2. Capture the incoming data from the external app
+        // We nest it inside "WebhookBody" so users can access it cleanly
+        const externalContext = {
+            WebhookBody: req.body,       // The JSON payload (e.g., Stripe payment data)
+            WebhookQuery: req.query,     // Any URL parameters
+            WebhookHeaders: req.headers  // Useful for signature verification later
+        };
+
+        // 3. Queue the job in BullMQ
+        const executionId = `webhook_exec_${Date.now()}`;
+        
+        await workflowQueue.add(
+            'execute-workflow', 
+            { 
+                workflowId: workflowId, 
+                executionId: workflowId, // 🟢 FIX: Broadcast visuals to the base workflow room so frontend sees it
+                context: externalContext,
+                requestedAt: new Date().toISOString()
+            }, 
+            { jobId: executionId } // Job ID must stay unique so BullMQ doesn't deduplicate it
+        );
+
+        console.log(`📥 Webhook received for [${workflowId}]. Queued execution: ${executionId}`);
+        
+        // Return a 200 OK immediately so the external service doesn't timeout waiting for the blockchain
+        res.status(200).json({ success: true, message: "Webhook accepted and queued." });
+
+    } catch (error: any) {
+        console.error("Webhook processing error:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+
+// --- API ROUTE: HOT RELOAD ---
 app.put('/hot-reload', async (req, res) => {
     const { workflowId, config } = req.body;
     try {

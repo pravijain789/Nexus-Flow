@@ -4,7 +4,7 @@ import { resolveVariable, type ExecutionContext } from './engine/variableResolve
 import { NODE_REGISTRY } from './engine/nodes/index.js';
 import { evaluateRuleGroup, type RuleGroup, type LogicRule } from './engine/logic.js';
 import { redisPublisher } from './config/redisPublisher.js';
-import { redisConnection } from './config/redis.js'; // <--- NEW: Import Redis connection for Hot Reloading
+import { redisConnection } from './config/redis.js'; 
 
 // --- HELPER: REAL-TIME REPORTER ---
 // Sends status updates to Redis -> API -> Frontend (Socket)
@@ -40,7 +40,7 @@ const executeChain = async (
     actions: any[], 
     context: ExecutionContext, 
     spreadsheetId?: string, 
-    jobId?: string // <--- NEW: Pass Job ID for reporting
+    jobId?: string 
 ): Promise<ExecutionContext> => {
     
     for (const action of actions) {
@@ -161,14 +161,16 @@ const executeChain = async (
 export default async function workerProcessor(job: Job) {
     console.log(`\n👷 [PID:${process.pid}] Processing Job ${job.id}`);
     
-    // FIX: Extract workflowId to ensure we match the frontend subscription room exactly
-    const { context: initialContext, workflowId } = job.data;
-    const eventRoomId = workflowId || job.id; 
+    // FIX: Extract executionId alongside workflowId to correctly route test run events
+    const { context: initialContext, workflowId, executionId } = job.data;
+    
+    // The Socket Room is the executionId (for manual tests) OR the workflowId (for scheduled runs)
+    const eventRoomId = executionId || workflowId || job.id; 
 
     let itemsToProcess: any[] = [];
 
     try {
-        // 🟢 HOT RELOAD FIX: Fetch the absolute latest configuration from Redis!
+        // Fetch the absolute latest configuration from Redis using the BASE workflowId
         const configString = await redisConnection.get(`workflow_config:${workflowId}`);
         let config;
         
@@ -220,7 +222,7 @@ export default async function workerProcessor(job: Job) {
                 context["ROW_INDEX"] = item.realIndex;
             }
 
-            // FIX: Emit reset signal so frontend canvas clears previous run states
+            // Emit reset signal so frontend canvas clears previous run states in the correct room
             await emitEvent(eventRoomId, 'workflow_run_started', { timestamp: Date.now() });
 
             // Start the chain execution, passing the exact eventRoomId for reporting

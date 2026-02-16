@@ -23,7 +23,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { Toaster, toast } from "sonner";
-import { io } from "socket.io-client"; // <--- IMPORT SOCKET.IO
+import { io } from "socket.io-client";
 
 import {
   Save,
@@ -35,7 +35,7 @@ import {
   Settings,
   LayoutGrid,
   LayoutList,
-  Clock, // <-- IMPORT CLOCK ICON
+  Clock,
 } from "lucide-react";
 
 import NexusNode from "@/components/flow/NexusNode";
@@ -43,14 +43,13 @@ import PropertiesPanel from "@/components/PropertiesPanel";
 import ContextMenu from "@/components/flow/ContextMenu";
 import LiveLogs from "@/components/LiveLogs";
 import SettingsModal from "@/components/SettingsModal";
-import ActiveSchedulesModal from "@/components/ActiveSchedulesModal"; // <-- IMPORT NEW MODAL
+import ActiveSchedulesModal from "@/components/ActiveSchedulesModal";
 import { useUndoRedo } from "@/hooks/useUndoRedo";
 import { useDeployment } from "@/hooks/useDeployment";
 import { NODE_TYPES, CATEGORY_COLORS } from "@/lib/nodeConfig";
 import { FlowContext } from "@/components/flow/FlowContext";
 
 // --- SOCKET CONNECTION ---
-// Initialize outside component to avoid reconnects on re-renders
 const socket = io("http://localhost:3001");
 
 const nodeTypes = { nexusNode: NexusNode };
@@ -78,7 +77,7 @@ const CATEGORY_HEX: Record<string, string> = {
 };
 
 export default function NexusFlowPage() {
-  const [isCompact, setIsCompact] = useState(false);
+  const [isCompact, setIsCompact] = useState(true);
 
   return (
     <ReactFlowProvider>
@@ -105,7 +104,7 @@ function NexusCanvas() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isSchedulesOpen, setIsSchedulesOpen] = useState(false); // <-- NEW STATE FOR SCHEDULES MODAL
+  const [isSchedulesOpen, setIsSchedulesOpen] = useState(false);
   const [globalSettings, setGlobalSettings] = useState({
     name: "My Workflow",
     spreadsheetId: "",
@@ -114,8 +113,7 @@ function NexusCanvas() {
   // Track active execution
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
-  // --- NEW: Added hotReload to the destructured useDeployment call ---
-  const { deploy, hotReload, isDeploying } = useDeployment();
+  const { deploy, hotReload, runNow, isDeploying } = useDeployment();
   const { takeSnapshot, undo, redo } = useUndoRedo(nodes, edges);
 
   const [defaultEdgeType, setDefaultEdgeType] = useState<any>("smoothstep");
@@ -123,52 +121,44 @@ function NexusCanvas() {
 
   const { isCompact, toggleCompact } = useContext(FlowContext);
 
-  // --- 🟢 NEW: THE AUTO-SAVE / HOT RELOAD HOOK ---
+  // --- 🟢 THE AUTO-SAVE / HOT RELOAD HOOK ---
   useEffect(() => {
-    // Only auto-save if we have actively deployed this workflow
     if (activeJobId && hotReload) {
-      // Debounce: Wait 1 second after the user stops typing/dragging before saving
       const timeoutId = setTimeout(() => {
         console.log("🔄 Silently hot-reloading active workflow...");
         hotReload(globalSettings.name, globalSettings, activeJobId);
       }, 1000);
-
       return () => clearTimeout(timeoutId);
     }
-  }, [nodes, edges, globalSettings, activeJobId, hotReload]); // Triggers whenever canvas changes
+  }, [nodes, edges, globalSettings, activeJobId, hotReload]);
 
   // --- 1. REAL-TIME EXECUTION LISTENER ---
   useEffect(() => {
     socket.on("workflow_update", (event) => {
       const { type, nodeId, result, error } = event;
 
-      // --- NEW: Handle the Visual Reset for new iterations ---
       if (type === "workflow_run_started") {
-        // Reset all nodes to clear previous execution data
         setNodes((nds) =>
           nds.map((n) => ({
             ...n,
             data: { ...n.data, executionData: null },
           })),
         );
-
-        // Reset all edges back to default state
         setEdges((eds) =>
           eds.map((e) => ({
             ...e,
             animated: false,
             style: {
               ...e.style,
-              stroke: "#6366f1", // Default Indigo
+              stroke: "#6366f1",
               strokeWidth: 2,
               strokeDasharray: "0",
             },
           })),
         );
-        return; // Exit early since this isn't a node-specific event
+        return;
       }
 
-      // A. EXISTING: Update Node State to trigger the Popover and Rings
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === nodeId) {
@@ -201,43 +191,39 @@ function NexusCanvas() {
         }),
       );
 
-      // B. EXISTING: Update Edges (Arrows)
       setEdges((eds) =>
         eds.map((edge) => {
-          // A. NODE STARTED -> Arrow becomes Amber + Dotted + Moving
           if (type === "node_started" && edge.target === nodeId) {
             return {
               ...edge,
               animated: true,
               style: {
                 ...edge.style,
-                stroke: "#fbbf24", // Amber
+                stroke: "#fbbf24",
                 strokeWidth: 2,
                 strokeDasharray: "5,5",
               },
             };
           }
-          // B. NODE SUCCESS -> Arrow becomes Green + Solid + Static
           if (type === "node_completed" && edge.target === nodeId) {
             return {
               ...edge,
               animated: false,
               style: {
                 ...edge.style,
-                stroke: "#10b981", // Green
+                stroke: "#10b981",
                 strokeWidth: 3,
                 strokeDasharray: "0",
               },
             };
           }
-          // C. NODE FAILED -> Arrow becomes Red + Solid
           if (type === "node_failed" && edge.target === nodeId) {
             return {
               ...edge,
               animated: false,
               style: {
                 ...edge.style,
-                stroke: "#ef4444", // Red
+                stroke: "#ef4444",
                 strokeWidth: 3,
                 strokeDasharray: "0",
               },
@@ -280,9 +266,8 @@ function NexusCanvas() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [undo, redo, nodes, edges, setNodes, setEdges]);
 
-  // --- 2. UPDATED DEPLOY HANDLER ---
+  // --- 2. DEPLOY HANDLER ---
   const handleDeploy = async () => {
-    // A. Reset edges to default state before new run
     setEdges((eds) =>
       eds.map((e) => ({
         ...e,
@@ -295,13 +280,8 @@ function NexusCanvas() {
         },
       })),
     );
-
-    // B. Reset node execution states before new run
     setNodes((nds) =>
-      nds.map((n) => ({
-        ...n,
-        data: { ...n.data, executionData: null },
-      })),
+      nds.map((n) => ({ ...n, data: { ...n.data, executionData: null } })),
     );
 
     const promise = deploy(globalSettings.name, globalSettings);
@@ -312,13 +292,15 @@ function NexusCanvas() {
         description: "Your agent is active and listening for events.",
         duration: 4000,
       });
-      console.log("Server Response:", result.data);
 
-      // Subscribe to real-time updates for this Job ID
-      if (result.data && result.data.jobId) {
-        const jobId = result.data.jobId;
-        setActiveJobId(jobId);
-        socket.emit("subscribe_job", jobId);
+      // 🟢 THE FIX: Safely retrieve jobId whether it's nested or at the root
+      const returnedJobId = result.jobId || (result.data && result.data.jobId);
+
+      if (returnedJobId) {
+        setActiveJobId(returnedJobId);
+        // Subscribe the frontend to this workflow's specific room
+        socket.emit("subscribe_job", returnedJobId);
+        console.log(`🔌 Subscribed to WebSocket room: ${returnedJobId}`);
         toast.info("Watching execution...", { duration: 2000 });
       }
     } else {
@@ -326,6 +308,37 @@ function NexusCanvas() {
         description: result.error || "An unknown error occurred.",
         duration: 5000,
       });
+    }
+  };
+
+  // --- 3. RUN NOW HANDLER ---
+  const handleRunNow = async () => {
+    // Reset canvas visuals so the new run trace is clear
+    setEdges((eds) =>
+      eds.map((e) => ({
+        ...e,
+        animated: false,
+        style: {
+          ...e.style,
+          stroke: "#6366f1",
+          strokeWidth: 2,
+          strokeDasharray: "0",
+        },
+      })),
+    );
+    setNodes((nds) =>
+      nds.map((n) => ({ ...n, data: { ...n.data, executionData: null } })),
+    );
+
+    const result = await runNow(globalSettings.name, globalSettings);
+    if (result.success) {
+      toast.success("Test Run Started!", { duration: 2000 });
+      if (result.jobId) {
+        setActiveJobId(result.jobId);
+        socket.emit("subscribe_job", result.jobId);
+      }
+    } else {
+      toast.error("Test Run Failed", { description: result.error });
     }
   };
 
@@ -669,7 +682,7 @@ function NexusCanvas() {
               </button>
             </div>
 
-            {/* NEW: Schedules Manager Button */}
+            {/* Schedules Manager Button */}
             <button
               onClick={() => setIsSchedulesOpen(true)}
               className="flex items-center gap-2 px-4 py-2 text-slate-600 bg-white border border-slate-200 rounded-lg text-sm font-bold hover:bg-slate-50 transition-colors"
@@ -677,12 +690,16 @@ function NexusCanvas() {
               <Clock size={16} className="text-indigo-500" /> Schedules
             </button>
 
+            {/* 🟢 NEW: Run Now Button */}
             <button
-              onClick={() => setIsSettingsOpen(true)}
               className="flex items-center gap-2 px-4 py-2 text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-lg text-sm font-bold hover:bg-indigo-100 transition-colors"
+              onClick={handleRunNow}
+              disabled={isDeploying}
             >
-              <Save size={16} /> Settings
+              <Play size={16} /> Run Now
             </button>
+
+            {/* Deploy Button */}
             <button
               className={`flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all transform hover:scale-105 ${
                 isDeploying ? "opacity-70 cursor-wait" : ""
@@ -693,7 +710,7 @@ function NexusCanvas() {
               {isDeploying ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : (
-                <Play size={16} />
+                <Save size={16} />
               )}
               {isDeploying ? "Deploying..." : "Deploy"}
             </button>
