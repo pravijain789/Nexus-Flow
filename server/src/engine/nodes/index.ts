@@ -18,6 +18,7 @@ import { dataTransformer } from "./dataTransformer.js";
 import { readRSS } from "./rssReader.js";
 import { getAaveSupply } from "./aaveSupply.js";
 import { httpScraper } from "./httpScraper.js";
+import { walletBalance } from "./walletBalance.js";
 
 export const NODE_REGISTRY: Record<string, Function> = {
     "transfer": transfer,    
@@ -39,5 +40,6 @@ export const NODE_REGISTRY: Record<string, Function> = {
     "transform_data": dataTransformer,
     "read_rss": readRSS,
     "aave_supply": getAaveSupply,
-    "http_scraper": httpScraper
+    "http_scraper": httpScraper,
+    "wallet_balance": walletBalance
 };

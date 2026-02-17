@@ -1,7 +1,7 @@
 import { 
   Zap, ArrowRightLeft, Database, Calculator, MessageSquare, Mail, 
-  FileSpreadsheet, Layers, Search, Globe, Rss, Fingerprint, 
-  Variable, FileJson, Calendar, Flame, Send, GitMerge, GitFork, Clock
+  FileSpreadsheet, Search, Globe, Rss, Fingerprint, 
+  Variable, FileJson, Calendar, Flame, Send, GitMerge, GitFork, Clock, Wallet
 } from 'lucide-react';
 
 export const CATEGORY_COLORS: Record<string, any> = {
@@ -246,5 +246,14 @@ export const NODE_TYPES: Record<string, any> = {
       { name: '_info', label: 'Behavior', type: 'text', placeholder: 'Waits for all branches', readOnly: true }
     ],
     outputs: [] // No specific outputs, it passes context through
-  }
+  },
+  'wallet_balance': { 
+    label: 'Read Wallet Balance', category: 'web3', icon: Wallet,
+    inputs: [
+      { name: 'walletAddress', label: 'Wallet Address', type: 'text', placeholder: '0x...' },
+      { name: 'tokenAddress', label: 'Token Contract (Opt)', type: 'text', placeholder: 'Leave blank for ETH', required: false },
+      { name: 'decimals', label: 'Decimals (Opt)', type: 'number', placeholder: '18', required: false },
+    ],
+    outputs: [{ name: 'BALANCE', desc: 'Formatted Token Balance' }]
+  },
 };
