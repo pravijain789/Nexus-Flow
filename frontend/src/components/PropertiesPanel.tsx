@@ -125,14 +125,42 @@ export default function PropertiesPanel({
     }
 
     nodes.forEach((node: any) => {
+      // Don't suggest outputs from the node currently being edited
       if (node.id === selectedNode.id) return;
+
       const nodeConfig = NODE_TYPES[node.data.type];
+
       if (nodeConfig?.outputs) {
         nodeConfig.outputs.forEach((out: any) => {
+          // --- 🟢 NEW: SMART JSON SCHEMA PARSING FOR GEMINI ---
+          if (out.name === "dynamic" && out.sourceField === "schema") {
+            const schemaText = node.data.config?.[out.sourceField];
+            if (schemaText) {
+              try {
+                // Try to parse the user's JSON schema to extract keys
+                const parsedSchema = JSON.parse(schemaText);
+                Object.keys(parsedSchema).forEach((key) => {
+                  vars.push({
+                    name: key,
+                    nodeId: node.id,
+                    desc: `AI Output (${parsedSchema[key]})`,
+                    sourceLabel: node.data.label || nodeConfig.label,
+                    icon: "node",
+                  });
+                });
+              } catch (e) {
+                // User is still typing or JSON is invalid, do nothing yet
+              }
+            }
+            return; // Exit this loop iteration early
+          }
+
+          // --- STANDARD DYNAMIC ALIAS (Like JSON Extractor) ---
           let varName = out.name;
-          if (out.name === "dynamic" && out.sourceField) {
+          if (out.name === "dynamic" && out.sourceField !== "schema") {
             varName = node.data.config?.[out.sourceField];
           }
+
           if (varName) {
             vars.push({
               name: varName,

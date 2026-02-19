@@ -74,6 +74,7 @@ const CATEGORY_HEX: Record<string, string> = {
   logic: "#64748b",
   notify: "#f43f5e",
   ops: "#3b82f6",
+  ai: "#C026D3",
 };
 
 export default function NexusFlowPage() {
@@ -586,53 +587,55 @@ function NexusCanvas() {
 
         {/* Node Palette */}
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
-          {["trigger", "web3", "data", "logic", "notify", "ops"].map((cat) => {
-            const categoryNodes = Object.entries(NODE_TYPES).filter(
-              ([type, config]) =>
-                config.category === cat &&
-                config.label.toLowerCase().includes(searchTerm.toLowerCase()),
-            );
+          {["trigger", "web3", "data", "logic", "notify", "ops", "ai"].map(
+            (cat) => {
+              const categoryNodes = Object.entries(NODE_TYPES).filter(
+                ([type, config]) =>
+                  config.category === cat &&
+                  config.label.toLowerCase().includes(searchTerm.toLowerCase()),
+              );
 
-            if (categoryNodes.length === 0) return null;
+              if (categoryNodes.length === 0) return null;
 
-            return (
-              <div
-                key={cat}
-                className="animate-in fade-in slide-in-from-left-4 duration-300"
-              >
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">
-                  {cat.charAt(0).toUpperCase() + cat.slice(1)}
-                </h3>
-                <div className="space-y-2">
-                  {categoryNodes.map(([type, config]) => (
-                    <div
-                      key={type}
-                      onClick={() => onAddNode(type)}
-                      className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all group active:scale-95"
-                      draggable
-                      onDragStart={(event) => onDragStart(event, type)}
-                    >
+              return (
+                <div
+                  key={cat}
+                  className="animate-in fade-in slide-in-from-left-4 duration-300"
+                >
+                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">
+                    {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  </h3>
+                  <div className="space-y-2">
+                    {categoryNodes.map(([type, config]) => (
                       <div
-                        className={`p-2 rounded-lg ${CATEGORY_COLORS[cat].bg}`}
+                        key={type}
+                        onClick={() => onAddNode(type)}
+                        className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-xl cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all group active:scale-95"
+                        draggable
+                        onDragStart={(event) => onDragStart(event, type)}
                       >
-                        {React.createElement(config.icon, {
-                          size: 16,
-                          className: CATEGORY_COLORS[cat].text,
-                        })}
+                        <div
+                          className={`p-2 rounded-lg ${CATEGORY_COLORS[cat].bg}`}
+                        >
+                          {React.createElement(config.icon, {
+                            size: 16,
+                            className: CATEGORY_COLORS[cat].text,
+                          })}
+                        </div>
+                        <span className="text-sm font-medium text-slate-600 group-hover:text-indigo-600">
+                          {config.label}
+                        </span>
+                        <Plus
+                          size={14}
+                          className="ml-auto text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                        />
                       </div>
-                      <span className="text-sm font-medium text-slate-600 group-hover:text-indigo-600">
-                        {config.label}
-                      </span>
-                      <Plus
-                        size={14}
-                        className="ml-auto text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"
-                      />
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            },
+          )}
         </div>
       </div>
 

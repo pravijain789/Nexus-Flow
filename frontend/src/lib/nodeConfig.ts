@@ -1,7 +1,7 @@
 import { 
   Zap, ArrowRightLeft, Database, Calculator, MessageSquare, Mail, 
   FileSpreadsheet, Search, Globe, Rss, Fingerprint, 
-  Variable, FileJson, Calendar, Flame, Send, GitMerge, GitFork, Clock, Wallet
+  Variable, FileJson, Calendar, Flame, Send, GitMerge, GitFork, Clock, Wallet, Sparkles
 } from 'lucide-react';
 
 export const CATEGORY_COLORS: Record<string, any> = {
@@ -10,7 +10,8 @@ export const CATEGORY_COLORS: Record<string, any> = {
   data:   { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-600', accent: 'bg-emerald-500' },
   logic:  { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-600', accent: 'bg-slate-500' },
   notify: { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-600', accent: 'bg-rose-500' },
-  ops:    { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', accent: 'bg-blue-500' },
+  ops: { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-600', accent: 'bg-blue-500' },
+  ai: { bg: 'bg-fuchsia-50', border: 'border-fuchsia-200', text: 'text-fuchsia-600', accent: 'bg-fuchsia-500' },
 };
 
 export const NODE_TYPES: Record<string, any> = {
@@ -255,5 +256,25 @@ export const NODE_TYPES: Record<string, any> = {
       { name: 'decimals', label: 'Decimals (Opt)', type: 'number', placeholder: '18', required: false },
     ],
     outputs: [{ name: 'BALANCE', desc: 'Formatted Token Balance' }]
+  },
+  'gemini_prompt': { 
+    label: 'Gemini LLM', category: 'ai', icon: Sparkles,
+    inputs: [
+      { 
+        name: 'prompt', 
+        label: 'Custom Prompt', 
+        type: 'textarea', 
+        placeholder: 'Analyze this article and extract the token mentioned: {{node_1.SCRAPED_CONTENT}}' 
+      },
+      { 
+        name: 'schema', 
+        label: 'Expected JSON Output (Schema)', 
+        type: 'textarea', 
+        placeholder: '{\n  "summary": "string",\n  "sentiment": "bullish|bearish|neutral",\n  "token_symbol": "string"\n}' 
+      }
+    ],
+    // We leave outputs empty or define a dummy 'dynamic' output because the 
+    // actual output variables will depend entirely on what the user types in their schema!
+    outputs: [{ name: 'dynamic', sourceField: 'schema', desc: 'Parsed JSON Keys' }]
   },
 };
