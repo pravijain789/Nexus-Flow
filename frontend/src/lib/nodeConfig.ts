@@ -1,7 +1,7 @@
 import { 
   Zap, ArrowRightLeft, Database, Calculator, MessageSquare, Mail, 
   FileSpreadsheet, Search, Globe, Rss, Fingerprint, 
-  Variable, FileJson, Calendar, Flame, Send, GitMerge, GitFork, Clock, Wallet, Sparkles
+  Variable, FileJson, Calendar, Flame, Send, GitMerge, GitFork, Clock, Wallet, Sparkles, TrendingUp, FileText
 } from 'lucide-react';
 
 export const CATEGORY_COLORS: Record<string, any> = {
@@ -257,9 +257,11 @@ export const NODE_TYPES: Record<string, any> = {
     ],
     outputs: [{ name: 'BALANCE', desc: 'Formatted Token Balance' }]
   },
+  // --- AI ---
   'gemini_prompt': { 
     label: 'Gemini LLM', category: 'ai', icon: Sparkles,
     inputs: [
+      { name: 'apiKey', label: 'Gemini API Key', type: 'password', required: true },
       { 
         name: 'prompt', 
         label: 'Custom Prompt', 
@@ -273,8 +275,31 @@ export const NODE_TYPES: Record<string, any> = {
         placeholder: '{\n  "summary": "string",\n  "sentiment": "bullish|bearish|neutral",\n  "token_symbol": "string"\n}' 
       }
     ],
-    // We leave outputs empty or define a dummy 'dynamic' output because the 
-    // actual output variables will depend entirely on what the user types in their schema!
-    outputs: [{ name: 'dynamic', sourceField: 'schema', desc: 'Parsed JSON Keys' }]
+    outputs: [{ name: 'dynamic', sourceField: 'schema', desc: 'Parsed JSON Keys' }] 
+  },
+
+  'ai_summarizer': { 
+    label: 'Text Summarizer', category: 'ai', icon: FileText,
+    inputs: [
+      { name: 'apiKey', label: 'Gemini API Key', type: 'password', required: true },
+      { name: 'text', label: 'Text to Summarize', type: 'textarea', placeholder: '{{node_1.SCRAPED_CONTENT}}' },
+      { name: 'style', label: 'Format Style', type: 'select', options: ['bullet points', 'paragraph', 'tldr', 'tweet'] },
+      { name: 'length', label: 'Length', type: 'select', options: ['short', 'medium', 'long'] }
+    ],
+    outputs: [{ name: 'SUMMARY', desc: 'The summarized text' }] 
+  },
+
+  'ai_sentiment': { 
+    label: 'Market Sentiment', category: 'ai', icon: TrendingUp,
+    inputs: [
+      { name: 'apiKey', label: 'Gemini API Key', type: 'password', required: true },
+      { name: 'text', label: 'Text to Analyze', type: 'textarea', placeholder: '{{node_1.RSS_CONTENT}}' },
+      { name: 'target', label: 'Target Entity/Token (Opt)', type: 'text', placeholder: 'Ethereum', required: false }
+    ],
+    outputs: [
+      { name: 'SENTIMENT', desc: 'BULLISH, BEARISH, or NEUTRAL' },
+      { name: 'CONFIDENCE', desc: 'Score from 0-100' },
+      { name: 'REASON', desc: '1-sentence explanation' }
+    ] 
   },
 };

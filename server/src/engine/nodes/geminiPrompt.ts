@@ -12,9 +12,9 @@ export const geminiPrompt = async (inputs: ActionInput, context: ExecutionContex
 
     console.log(`   🧠 Executing Gemini Node...`);
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = inputs.apiKey ? resolveVariable(inputs.apiKey, context) : process.env.GEMINI_API_KEY;
     if (!apiKey) {
-        throw new Error("GEMINI_API_KEY is missing from environment variables.");
+        throw new Error("Gemini API Key is missing. Please provide it in the node configuration.");
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
