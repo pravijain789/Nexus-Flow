@@ -20,6 +20,8 @@ import { getAaveSupply } from "./aaveSupply.js";
 import { httpScraper } from "./httpScraper.js";
 import { walletBalance } from "./walletBalance.js";
 import { geminiPrompt } from "./geminiPrompt.js";
+import { aiSummarizer } from "./aiSummarizer.js";
+import { aiSentiment } from "./aiSentiment.js";
 
 export const NODE_REGISTRY: Record<string, Function> = {
     "transfer": transfer,    
@@ -43,5 +45,7 @@ export const NODE_REGISTRY: Record<string, Function> = {
     "aave_supply": getAaveSupply,
     "http_scraper": httpScraper,
     "wallet_balance": walletBalance,
-    "gemini_prompt": geminiPrompt
+    "gemini_prompt": geminiPrompt,
+    "ai_summarizer": aiSummarizer,
+    "ai_sentiment": aiSentiment,
 };

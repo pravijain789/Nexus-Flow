@@ -1,7 +1,6 @@
-import React, { useState, useRef, useEffect } from "react";
-import { Plus, Trash2, GitMerge, Braces, Activity } from "lucide-react";
+import React, { useRef } from "react";
+import { Plus, Trash2, GitMerge, Braces } from "lucide-react";
 
-// --- TYPES ---
 type Operator = ">" | "<" | "==" | "!=" | "contains" | "is_empty";
 type LogicRule = { valueA: string; operator: Operator; valueB: string };
 type RuleGroup = { combinator: "AND" | "OR"; rules: (LogicRule | RuleGroup)[] };
@@ -9,40 +8,37 @@ type RuleGroup = { combinator: "AND" | "OR"; rules: (LogicRule | RuleGroup)[] };
 interface LogicBuilderProps {
   value: RuleGroup;
   onChange: (val: RuleGroup) => void;
-  variables: any[];
+  onOpenPicker: (onInsert: (varName: string, nodeId?: string) => void) => void;
 }
 
-// --- MAIN COMPONENT ---
 export default function LogicBuilder({
   value,
   onChange,
-  variables,
+  onOpenPicker,
 }: LogicBuilderProps) {
-  if (!value || !value.rules) {
-    value = { combinator: "AND", rules: [] };
-  }
+  if (!value || !value.rules) value = { combinator: "AND", rules: [] };
 
   const updateGroup = (newGroup: RuleGroup) => onChange(newGroup);
 
   const addRule = () => {
-    const newRules = [
-      ...value.rules,
-      { valueA: "", operator: "==", valueB: "" } as LogicRule,
-    ];
-    updateGroup({ ...value, rules: newRules });
+    updateGroup({
+      ...value,
+      rules: [
+        ...value.rules,
+        { valueA: "", operator: "==", valueB: "" } as LogicRule,
+      ],
+    });
   };
 
   const addGroup = () => {
-    const newRules = [
-      ...value.rules,
-      { combinator: "AND", rules: [] } as RuleGroup,
-    ];
-    updateGroup({ ...value, rules: newRules });
+    updateGroup({
+      ...value,
+      rules: [...value.rules, { combinator: "AND", rules: [] } as RuleGroup],
+    });
   };
 
   const removeIndex = (index: number) => {
-    const newRules = value.rules.filter((_, i) => i !== index);
-    updateGroup({ ...value, rules: newRules });
+    updateGroup({ ...value, rules: value.rules.filter((_, i) => i !== index) });
   };
 
   const updateIndex = (index: number, item: LogicRule | RuleGroup) => {
@@ -81,7 +77,7 @@ export default function LogicBuilder({
                 <LogicBuilder
                   value={rule as RuleGroup}
                   onChange={(val) => updateIndex(idx, val)}
-                  variables={variables}
+                  onOpenPicker={onOpenPicker}
                 />
                 <button
                   onClick={() => removeIndex(idx)}
@@ -97,7 +93,7 @@ export default function LogicBuilder({
                   onChange={(v: string) =>
                     updateIndex(idx, { ...rule, valueA: v } as LogicRule)
                   }
-                  variables={variables}
+                  onOpenPicker={onOpenPicker}
                   placeholder="Var A"
                 />
 
@@ -124,7 +120,7 @@ export default function LogicBuilder({
                   onChange={(v: string) =>
                     updateIndex(idx, { ...rule, valueB: v } as LogicRule)
                   }
-                  variables={variables}
+                  onOpenPicker={onOpenPicker}
                   placeholder="Value"
                 />
 
@@ -158,72 +154,48 @@ export default function LogicBuilder({
   );
 }
 
-// --- SUB-COMPONENT: SMART INPUT WITH PICKER & HOTKEYS ---
-const VariableInput = ({ value, onChange, variables, placeholder }: any) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [cursorPos, setCursorPos] = useState<number | null>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
+// --- SUB-COMPONENT: CLEANER VARIABLE INPUT ---
+const VariableInput = ({ value, onChange, onOpenPicker, placeholder }: any) => {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        wrapperRef.current &&
-        !wrapperRef.current.contains(event.target as Node)
-      )
-        setIsOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const triggerPicker = () => {
+    const pos = inputRef.current?.selectionStart || (value || "").length;
+
+    // Call the global picker provided by PropertiesPanel
+    onOpenPicker((varName: string, nodeId?: string) => {
+      const formatted = nodeId ? `{{${nodeId}.${varName}}}` : `{{${varName}}}`;
+      const safeValue = value || "";
+
+      const before = safeValue.slice(0, pos);
+      const after = safeValue.slice(pos);
+      onChange(`${before}${formatted}${after}`);
+
+      // Re-focus and update cursor after injection
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          const newPos = pos + formatted.length;
+          inputRef.current.setSelectionRange(newPos, newPos);
+        }
+      }, 0);
+    });
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.ctrlKey && e.code === "Space") {
       e.preventDefault();
-      setCursorPos(inputRef.current?.selectionStart || null);
-      setIsOpen(true);
+      triggerPicker();
     }
-    if (e.code === "Escape" && isOpen) setIsOpen(false);
-  };
-
-  const updateCursor = () =>
-    setCursorPos(inputRef.current?.selectionStart || null);
-
-  const insertVar = (varName: string, nodeId?: string) => {
-    const formatted = nodeId ? `{{${nodeId}.${varName}}}` : `{{${varName}}}`;
-    const safeValue = value || "";
-
-    if (cursorPos !== null) {
-      const before = safeValue.slice(0, cursorPos);
-      const after = safeValue.slice(cursorPos);
-      onChange(`${before}${formatted}${after}`);
-
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-          const newPos = cursorPos + formatted.length;
-          inputRef.current.setSelectionRange(newPos, newPos);
-        }
-      }, 0);
-    } else {
-      onChange(`${safeValue}${formatted}`);
-    }
-    setIsOpen(false);
   };
 
   return (
-    <div ref={wrapperRef} className="relative flex-1 min-w-[100px] group/input">
+    <div className="relative flex-1 min-w-[100px] group/input">
       <input
         ref={inputRef}
         type="text"
         value={value || ""}
-        onChange={(e) => {
-          onChange(e.target.value);
-          updateCursor();
-        }}
+        onChange={(e) => onChange(e.target.value)}
         onKeyDown={handleKeyDown}
-        onClick={updateCursor}
-        onKeyUp={updateCursor}
         placeholder={placeholder}
         className="w-full text-xs p-1.5 pr-6 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none font-mono text-slate-700 transition-colors"
       />
@@ -231,59 +203,17 @@ const VariableInput = ({ value, onChange, variables, placeholder }: any) => {
       <button
         onClick={(e) => {
           e.preventDefault();
-          setCursorPos(inputRef.current?.selectionStart || null);
-          setIsOpen(!isOpen);
+          triggerPicker();
         }}
-        className={`absolute right-0 top-1 p-0.5 rounded transition-colors ${isOpen ? "text-indigo-600 bg-indigo-50" : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"}`}
+        className="absolute right-0 top-1 p-0.5 rounded transition-colors text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
         title="Insert Variable (Ctrl + Space)"
       >
         <Braces size={12} />
       </button>
 
-      {!isOpen && !value && (
+      {!value && (
         <div className="absolute right-6 top-1.5 text-[9px] text-slate-300 pointer-events-none opacity-0 group-hover/input:opacity-100 transition-opacity font-sans">
           Ctrl+Space
-        </div>
-      )}
-
-      {isOpen && (
-        <div className="absolute left-0 top-full mt-1 w-64 max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] animate-in fade-in zoom-in-95 duration-100">
-          <div className="bg-slate-50 px-2 py-1.5 border-b border-gray-100 text-[10px] font-bold text-slate-500 uppercase flex justify-between items-center">
-            <span>Select Variable</span>
-            <span className="text-[8px] font-normal text-slate-400 normal-case bg-slate-200/50 px-1 rounded">
-              esc to close
-            </span>
-          </div>
-          {variables.length === 0 ? (
-            <div className="p-3 text-center text-[10px] text-slate-400">
-              No variables found
-            </div>
-          ) : (
-            variables.map((v: any, idx: number) => (
-              <button
-                key={idx}
-                onClick={(e) => {
-                  e.preventDefault();
-                  insertVar(v.name, v.nodeId);
-                }}
-                className="w-full text-left px-3 py-2 hover:bg-indigo-50 flex items-center gap-2 border-b border-gray-50 last:border-0 group"
-              >
-                <div
-                  className={`p-1 rounded shrink-0 ${v.icon === "sheet" ? "bg-emerald-100 text-emerald-600" : "bg-indigo-100 text-indigo-600"}`}
-                >
-                  <Activity size={10} />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="text-[10px] font-bold text-slate-700 font-mono truncate group-hover:text-indigo-700">
-                    {v.name}
-                  </span>
-                  <span className="text-[9px] text-slate-400 truncate w-32">
-                    {v.desc}
-                  </span>
-                </div>
-              </button>
-            ))
-          )}
         </div>
       )}
     </div>
