@@ -9,8 +9,8 @@ export const aiSentiment = async (inputs: ActionInput, context: ExecutionContext
 
     console.log(`   🧠 Executing AI Sentiment Analysis for: ${targetEntity}...`);
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY is missing from environment variables.");
+    const apiKey = inputs.apiKey ? resolveVariable(inputs.apiKey, context) : process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("Gemini API Key is missing. Please provide it in the node configuration.");
 
     const genAI = new GoogleGenerativeAI(apiKey);
 

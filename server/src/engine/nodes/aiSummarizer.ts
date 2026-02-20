@@ -8,12 +8,10 @@ export const aiSummarizer = async (inputs: ActionInput, context: ExecutionContex
     const style = inputs.style ? resolveVariable(inputs.style, context) : "bullet points";
     const length = inputs.length ? resolveVariable(inputs.length, context) : "short";
 
-    
+    const apiKey = inputs.apiKey ? resolveVariable(inputs.apiKey, context) : process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("Gemini API Key is missing. Please provide it in the node configuration.");
 
     console.log(`   🧠 Executing AI Summarizer...`);
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY is missing from environment variables.");
 
     const genAI = new GoogleGenerativeAI(apiKey);
 
