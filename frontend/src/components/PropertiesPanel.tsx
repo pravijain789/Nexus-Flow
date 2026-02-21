@@ -7,10 +7,93 @@ import {
   Activity,
   Database,
   Cpu,
-  Search, // <-- Added Search icon
+  Search,
+  ChevronDown,
+  Check,
+  Coins,
+  Lock,
 } from "lucide-react";
 import { NODE_TYPES, CATEGORY_COLORS } from "@/lib/nodeConfig";
 import LogicBuilder from "./LogicBuilder";
+
+// Helper to grab generic token SVGs
+const getTokenIcon = (opt: string, disabled: boolean = false) => {
+  const tokenIcons: Record<string, string> = {
+    ETH: "https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=025",
+    USDC: "https://cryptologos.cc/logos/usd-coin-usdc-logo.svg?v=025",
+    WETH: "https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=025",
+    UNI: "https://cryptologos.cc/logos/uniswap-uni-logo.svg?v=025",
+    LINK: "https://cryptologos.cc/logos/chainlink-link-logo.svg?v=025",
+  };
+
+  const opacityClass = disabled ? "opacity-40 grayscale" : "";
+
+  if (tokenIcons[opt]) {
+    return (
+      <img
+        src={tokenIcons[opt]}
+        alt={opt}
+        className={`w-4.5 h-4.5 rounded-full shadow-sm ${opacityClass}`}
+      />
+    );
+  }
+  if (opt === "Custom") {
+    return (
+      <Coins
+        size={16}
+        className={disabled ? "text-slate-300" : "text-indigo-500"}
+      />
+    );
+  }
+  return null;
+};
+
+// --- New: Deterministic Gradient Avatar for Addresses ---
+const AddressAvatar = ({
+  seed,
+  disabled,
+}: {
+  seed: string;
+  disabled: boolean;
+}) => {
+  if (!seed) {
+    return (
+      <div
+        className={`w-5 h-5 rounded-full bg-slate-100 border border-slate-200 ${disabled ? "opacity-50" : ""}`}
+      />
+    );
+  }
+
+  // If the seed contains a workflow variable, show a logic icon instead of a color gradient
+  if (seed.includes("{{")) {
+    return (
+      <div
+        className={`w-5 h-5 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500 ${disabled ? "opacity-50 grayscale" : ""}`}
+      >
+        <Braces size={10} strokeWidth={3} />
+      </div>
+    );
+  }
+
+  // Simple string hash to generate deterministic colors
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  const h1 = Math.abs(hash) % 360;
+  const h2 = Math.abs(hash * 13) % 360;
+
+  const c1 = `hsl(${h1}, 80%, 65%)`;
+  const c2 = `hsl(${h2}, 80%, 75%)`;
+
+  return (
+    <div
+      className={`w-5 h-5 rounded-full shadow-inner ${disabled ? "opacity-40 grayscale" : ""}`}
+      style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
+    />
+  );
+};
 
 export default function PropertiesPanel({
   selectedNode,
@@ -29,19 +112,25 @@ export default function PropertiesPanel({
     onInsert: (varName: string, nodeId?: string) => void;
   } | null>(null);
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState(""); // <-- Added search state
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Custom Select State
+  const [openSelect, setOpenSelect] = useState<string | null>(null);
 
   const inputRefs = useRef<
     Record<string, HTMLInputElement | HTMLTextAreaElement>
   >({});
 
-  // Close picker on Escape key
+  // Close overlays on Escape key
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && pickerConfig) {
-        setPickerConfig(null);
-        setExpandedGroup(null);
-        setSearchQuery("");
+      if (e.key === "Escape") {
+        if (pickerConfig) {
+          setPickerConfig(null);
+          setExpandedGroup(null);
+          setSearchQuery("");
+        }
+        setOpenSelect(null);
       }
     };
     window.addEventListener("keydown", handleGlobalKeyDown);
@@ -52,8 +141,26 @@ export default function PropertiesPanel({
     updateData(selectedNode.id, { [field]: value });
   };
 
+  // --- Dependency Logic ---
+  const isInputDisabled = (inputName: string) => {
+    if (inputName === "customTokenIn")
+      return currentData["tokenIn"] !== "Custom";
+    if (inputName === "customTokenOut")
+      return currentData["tokenOut"] !== "Custom";
+    if (inputName === "customDecimals" || inputName === "customIsNative") {
+      return (
+        currentData["tokenIn"] !== "Custom" &&
+        currentData["tokenOut"] !== "Custom"
+      );
+    }
+    if (inputName === "customToken") return currentData["token"] !== "Custom";
+    return false;
+  };
+
   // Open the Full-Width Picker
   const handleOpenStandardPicker = (fieldName: string) => {
+    if (isInputDisabled(fieldName)) return;
+
     const el = inputRefs.current[fieldName];
     const pos = el?.selectionStart || (currentData[fieldName] || "").length;
 
@@ -128,7 +235,6 @@ export default function PropertiesPanel({
 
     nodes.forEach((node: any) => {
       if (node.id === selectedNode.id) return;
-
       const nodeConfig = NODE_TYPES[node.data.type];
 
       if (nodeConfig?.outputs) {
@@ -147,9 +253,7 @@ export default function PropertiesPanel({
                     desc: `AI Output (${parsedSchema[key]})`,
                   });
                 });
-              } catch (e) {
-                // Ignore parsing errors
-              }
+              } catch (e) {}
             }
             return;
           }
@@ -174,8 +278,6 @@ export default function PropertiesPanel({
   };
 
   const rawVariableGroups = getAvailableVariables();
-
-  // Filter groups based on search query
   const filteredGroups = rawVariableGroups
     .map((group) => ({
       ...group,
@@ -214,111 +316,230 @@ export default function PropertiesPanel({
       </div>
 
       {/* Main Content */}
-      <div className="p-6 overflow-y-auto flex-1 space-y-6">
+      <div className="p-6 overflow-y-auto flex-1 space-y-6 pb-32 custom-scrollbar">
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
             <Settings size={14} /> Configuration
           </h3>
 
           {config.inputs &&
-            config.inputs.map((input: any) => (
-              <div key={input.name} className="space-y-1.5 relative group">
-                <div className="flex justify-between items-end">
-                  <label className="text-sm font-bold text-slate-700">
-                    {input.label}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    {!input.readOnly &&
-                      (input.type === "text" || input.type === "textarea") && (
-                        <span className="text-[9px] text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity font-sans pointer-events-none">
-                          Ctrl+Space
+            config.inputs.map((input: any) => {
+              const isDisabled = isInputDisabled(input.name);
+              // Identify if this input is meant for a wallet or contract address
+              const isAddressField = [
+                "address",
+                "recipient",
+                "customtoken",
+                "contract",
+              ].some((k) => input.name.toLowerCase().includes(k));
+
+              return (
+                <div
+                  key={input.name}
+                  className={`space-y-1.5 relative group ${openSelect === input.name ? "z-50" : "z-10"}`}
+                >
+                  <div className="flex justify-between items-end">
+                    <label
+                      className={`text-sm font-bold flex items-center gap-1.5 ${isDisabled ? "text-slate-400" : "text-slate-700"}`}
+                    >
+                      {input.label}
+                      {isDisabled && (
+                        <Lock size={12} className="text-slate-300" />
+                      )}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {!input.readOnly &&
+                        !isDisabled &&
+                        (input.type === "text" ||
+                          input.type === "textarea") && (
+                          <span className="text-[9px] text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity font-sans pointer-events-none">
+                            Ctrl+Space
+                          </span>
+                        )}
+                      {input.required === false && (
+                        <span
+                          className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${isDisabled ? "bg-slate-50 text-slate-300" : "bg-slate-100 text-slate-400"}`}
+                        >
+                          Optional
                         </span>
                       )}
-                    {input.required === false && (
-                      <span className="text-[10px] text-slate-400 font-medium px-1.5 py-0.5 bg-slate-100 rounded">
-                        Optional
-                      </span>
-                    )}
+                    </div>
                   </div>
-                </div>
 
-                {input.type === "logic-builder" ? (
-                  <LogicBuilder
-                    value={
-                      currentData[input.name] || {
-                        combinator: "AND",
-                        rules: [],
+                  {input.type === "logic-builder" ? (
+                    <LogicBuilder
+                      value={
+                        currentData[input.name] || {
+                          combinator: "AND",
+                          rules: [],
+                        }
                       }
-                    }
-                    onChange={(val: any) => handleChange(input.name, val)}
-                    onOpenPicker={(callback) =>
-                      setPickerConfig({ onInsert: callback })
-                    }
-                  />
-                ) : input.type === "select" ? (
-                  <select
-                    className="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm"
-                    value={currentData[input.name] || ""}
-                    onChange={(e) => handleChange(input.name, e.target.value)}
-                  >
-                    <option value="" disabled>
-                      Select an option
-                    </option>
-                    {input.options.map((opt: string) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div className="relative group/input">
-                    {input.type === "textarea" ? (
-                      <textarea
-                        ref={(el) => {
-                          if (el) inputRefs.current[input.name] = el;
-                        }}
-                        className="w-full p-2.5 bg-white border border-gray-300 rounded-lg text-sm text-slate-900 h-24 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all resize-none shadow-sm font-mono"
-                        placeholder={input.placeholder || ""}
-                        value={currentData[input.name] || ""}
-                        onChange={(e) =>
-                          handleChange(input.name, e.target.value)
-                        }
-                        onKeyDown={(e) => handleKeyDown(e, input.name)}
-                      />
-                    ) : (
-                      <input
-                        ref={(el) => {
-                          if (el) inputRefs.current[input.name] = el;
-                        }}
-                        type={input.type}
-                        className="w-full p-2.5 pr-8 bg-white border border-gray-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all shadow-sm font-mono"
-                        placeholder={input.placeholder || ""}
-                        value={currentData[input.name] || ""}
-                        readOnly={input.readOnly}
-                        onChange={(e) =>
-                          handleChange(input.name, e.target.value)
-                        }
-                        onKeyDown={(e) => handleKeyDown(e, input.name)}
-                      />
-                    )}
-
-                    {!input.readOnly &&
-                      (input.type === "text" || input.type === "textarea") && (
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleOpenStandardPicker(input.name);
-                          }}
-                          className="absolute right-2 top-2 p-1 rounded transition-colors text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
-                          title="Insert Variable (Ctrl + Space)"
-                        >
-                          <Braces size={14} />
-                        </button>
+                      onChange={(val: any) => handleChange(input.name, val)}
+                      onOpenPicker={(callback) =>
+                        setPickerConfig({ onInsert: callback })
+                      }
+                    />
+                  ) : input.type === "select" ? (
+                    <div className="relative">
+                      {openSelect === input.name && (
+                        <div
+                          className="fixed inset-0 z-40"
+                          onClick={() => setOpenSelect(null)}
+                        />
                       )}
-                  </div>
-                )}
-              </div>
-            ))}
+                      <button
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() =>
+                          setOpenSelect(
+                            openSelect === input.name ? null : input.name,
+                          )
+                        }
+                        className={`relative z-50 w-full px-3 py-2.5 rounded-xl text-sm transition-all flex items-center justify-between border ${
+                          isDisabled
+                            ? "bg-slate-50 border-slate-200 cursor-not-allowed"
+                            : openSelect === input.name
+                              ? "bg-white border-indigo-500 ring-4 ring-indigo-500/10 shadow-sm"
+                              : "bg-white border-slate-200 hover:border-slate-300 shadow-sm"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          {getTokenIcon(
+                            currentData[input.name] || "",
+                            isDisabled,
+                          )}
+                          <span
+                            className={
+                              !currentData[input.name] || isDisabled
+                                ? "text-slate-400"
+                                : "text-slate-800 font-medium"
+                            }
+                          >
+                            {currentData[input.name] || "Select an option"}
+                          </span>
+                        </div>
+                        <ChevronDown
+                          size={16}
+                          className={`transition-transform duration-200 ${isDisabled ? "text-slate-300" : "text-slate-400"} ${openSelect === input.name ? "rotate-180 text-indigo-500" : ""}`}
+                        />
+                      </button>
+
+                      {openSelect === input.name && !isDisabled && (
+                        <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 z-50 max-h-60 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-200">
+                          {input.options.map((opt: string) => (
+                            <button
+                              key={opt}
+                              type="button"
+                              onClick={() => {
+                                handleChange(input.name, opt);
+                                setOpenSelect(null);
+                              }}
+                              className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between group transition-colors ${
+                                currentData[input.name] === opt
+                                  ? "bg-indigo-50/50"
+                                  : "hover:bg-slate-50"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                {getTokenIcon(opt)}
+                                <span
+                                  className={
+                                    currentData[input.name] === opt
+                                      ? "text-indigo-700 font-semibold"
+                                      : "text-slate-700 group-hover:text-slate-900"
+                                  }
+                                >
+                                  {opt}
+                                </span>
+                              </div>
+                              {currentData[input.name] === opt && (
+                                <Check
+                                  size={16}
+                                  strokeWidth={2.5}
+                                  className="text-indigo-600"
+                                />
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="relative group/input z-10">
+                      {/* Avatar Overlay for Address Text Inputs */}
+                      {input.type === "text" && isAddressField && (
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                          <AddressAvatar
+                            seed={currentData[input.name] || ""}
+                            disabled={isDisabled}
+                          />
+                        </div>
+                      )}
+
+                      {input.type === "textarea" ? (
+                        <textarea
+                          ref={(el) => {
+                            if (el) inputRefs.current[input.name] = el;
+                          }}
+                          disabled={isDisabled}
+                          className={`w-full p-3 rounded-xl text-sm h-24 transition-all resize-none font-mono border ${
+                            isDisabled
+                              ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                              : "bg-white border-slate-200 text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 hover:border-slate-300 shadow-sm"
+                          }`}
+                          placeholder={input.placeholder || ""}
+                          value={currentData[input.name] || ""}
+                          onChange={(e) =>
+                            handleChange(input.name, e.target.value)
+                          }
+                          onKeyDown={(e) => handleKeyDown(e, input.name)}
+                        />
+                      ) : (
+                        <input
+                          ref={(el) => {
+                            if (el) inputRefs.current[input.name] = el;
+                          }}
+                          type={input.type}
+                          disabled={isDisabled}
+                          className={`w-full py-2.5 pr-9 rounded-xl text-sm transition-all font-mono border ${
+                            isAddressField ? "pl-10" : "px-3"
+                          } ${
+                            isDisabled
+                              ? "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
+                              : "bg-white border-slate-200 text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 hover:border-slate-300 shadow-sm"
+                          }`}
+                          placeholder={
+                            isDisabled ? "Disabled" : input.placeholder || ""
+                          }
+                          value={currentData[input.name] || ""}
+                          readOnly={input.readOnly}
+                          onChange={(e) =>
+                            handleChange(input.name, e.target.value)
+                          }
+                          onKeyDown={(e) => handleKeyDown(e, input.name)}
+                        />
+                      )}
+
+                      {!input.readOnly &&
+                        !isDisabled &&
+                        (input.type === "text" ||
+                          input.type === "textarea") && (
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleOpenStandardPicker(input.name);
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                            title="Insert Variable (Ctrl + Space)"
+                          >
+                            <Braces size={14} strokeWidth={2.5} />
+                          </button>
+                        )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
           {(!config.inputs || config.inputs.length === 0) && (
             <div className="text-center py-12 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
@@ -343,7 +564,6 @@ export default function PropertiesPanel({
       {/* --- REFINED FULL WIDTH BOTTOM SHEET OVERLAY --- */}
       {pickerConfig && (
         <>
-          {/* Backdrop */}
           <div
             className="absolute inset-0 z-[90] bg-slate-900/20 backdrop-blur-sm animate-in fade-in duration-300"
             onClick={() => {
@@ -353,14 +573,11 @@ export default function PropertiesPanel({
             }}
           />
 
-          {/* Bottom Sheet Modal */}
           <div className="absolute inset-x-0 bottom-0 z-[100] w-full bg-white border-t border-slate-200 shadow-[0_-20px_40px_-15px_rgba(0,0,0,0.1)] flex flex-col rounded-t-[1.5rem] animate-in slide-in-from-bottom-12 duration-300 max-h-[85%]">
-            {/* Drag Handle Indicator */}
             <div className="w-full flex justify-center pt-3 pb-2 shrink-0">
               <div className="w-12 h-1.5 bg-slate-200 rounded-full"></div>
             </div>
 
-            {/* Sheet Header & Search */}
             <div className="px-5 pb-4 border-b border-slate-100 flex flex-col gap-3 shrink-0">
               <div className="flex justify-between items-center">
                 <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -381,7 +598,6 @@ export default function PropertiesPanel({
                 </button>
               </div>
 
-              {/* Search Bar */}
               <div className="relative group">
                 <Search
                   size={14}
@@ -393,12 +609,11 @@ export default function PropertiesPanel({
                   placeholder="Search variables..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
                 />
               </div>
             </div>
 
-            {/* Sheet Content List */}
             <div className="overflow-y-auto flex-1 p-3 pb-6 custom-scrollbar">
               {filteredGroups.length === 0 ? (
                 <div className="py-12 text-center flex flex-col items-center gap-3">
@@ -417,7 +632,6 @@ export default function PropertiesPanel({
               ) : (
                 <div className="space-y-1.5">
                   {filteredGroups.map((group) => {
-                    // Auto-expand if searching, otherwise respect click state
                     const isExpanded =
                       searchQuery.length > 0 || expandedGroup === group.id;
 
