@@ -1,16 +1,16 @@
 import { createPublicClient, http, parseAbi, formatUnits } from "viem";
-import { sepolia } from "viem/chains"; // Using Sepolia to match your Aave/Transfer nodes
+import { sepolia } from "viem/chains"; 
 import { resolveVariable, type ExecutionContext } from "../variableResolver.js";
 import { Sanitize } from "../utils/inputSanitizer.js";
+import { KNOWN_TOKENS } from "../utils/tokenRegistry.js"; // <-- Make sure this file exists!
 
 type ActionInput = Record<string, any>;
 
 export const walletBalance = async (inputs: ActionInput, context: ExecutionContext) => {
     // 1. Resolve inputs
     const walletAddress = Sanitize.address(resolveVariable(inputs.walletAddress, context));
-    const tokenAddressRaw = inputs.tokenAddress ? resolveVariable(inputs.tokenAddress, context) : "";
-    const decimals = inputs.decimals ? Number(resolveVariable(inputs.decimals, context)) : 18;
-
+    const selectedToken = resolveVariable(inputs.token, context) || "ETH"; // Default to ETH
+    
     console.log(`   👛 Executing Wallet Reader: Checking balance for ${walletAddress}...`);
 
     // 2. Setup Viem Client
@@ -20,21 +20,52 @@ export const walletBalance = async (inputs: ActionInput, context: ExecutionConte
     });
 
     let rawBalance: bigint;
+    let decimals = 18;
     let tokenSymbol = "ETH";
+    let isNative = true;
+    let tokenAddress = "";
+
+    // 3. Determine token configuration based on UI selection
+    if (KNOWN_TOKENS[selectedToken]) {
+        // Known Token (ETH, USDC, etc.)
+        const config = KNOWN_TOKENS[selectedToken];
+        isNative = config.isNative;
+        decimals = config.decimals;
+        tokenAddress = config.address;
+        tokenSymbol = selectedToken;
+    } else {
+        // Custom Token Fallback
+        const rawCustom = resolveVariable(inputs.customToken || inputs.tokenAddress, context);
+        isNative = !rawCustom || rawCustom.toUpperCase() === "ETH" || rawCustom === "0x0000000000000000000000000000000000000000";
+        tokenSymbol = isNative ? "ETH" : "CustomToken";
+        
+        if (!isNative) {
+            tokenAddress = Sanitize.address(rawCustom);
+            // Attempt to dynamically fetch decimals from the smart contract!
+            try {
+                decimals = await publicClient.readContract({
+                    address: tokenAddress as `0x${string}`,
+                    abi: parseAbi(["function decimals() view returns (uint8)"]),
+                    functionName: "decimals"
+                });
+            } catch (e) {
+                console.log(`      ⚠️ Could not read decimals from contract, defaulting to 18.`);
+                // Fallback to 18 (or old legacy decimals input if it existed)
+                decimals = inputs.decimals ? Number(resolveVariable(inputs.decimals, context)) : 18;
+            }
+        }
+    }
 
     try {
-        // 3. Check Native ETH vs ERC-20
-        if (!tokenAddressRaw || tokenAddressRaw.toUpperCase() === "ETH" || tokenAddressRaw === "0x0000000000000000000000000000000000000000") {
+        // 4. Fetch the Balance
+        if (isNative) {
             // Fetch Native ETH Balance
             rawBalance = await publicClient.getBalance({ 
                 address: walletAddress as `0x${string}` 
             });
         } else {
             // Fetch ERC-20 Balance
-            const tokenAddress = Sanitize.address(tokenAddressRaw);
-            tokenSymbol = "Token"; // Could fetch actual symbol, but keeping it fast
             const erc20Abi = parseAbi(["function balanceOf(address owner) view returns (uint256)"]);
-            
             rawBalance = await publicClient.readContract({
                 address: tokenAddress as `0x${string}`,
                 abi: erc20Abi,
@@ -43,7 +74,7 @@ export const walletBalance = async (inputs: ActionInput, context: ExecutionConte
             }) as bigint;
         }
 
-        // 4. Format to readable decimal
+        // 5. Format to readable decimal using the fetched/known decimals
         const formattedBalance = formatUnits(rawBalance, decimals);
 
         console.log(`      -> Balance: ${formattedBalance} ${tokenSymbol}`);

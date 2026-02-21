@@ -52,19 +52,21 @@ export const NODE_TYPES: Record<string, any> = {
     inputs: [
       { name: 'toAddress', label: 'To Address', type: 'text', placeholder: '0x... or {{Wallet}}' },
       { name: 'amount', label: 'Amount', type: 'text', placeholder: '1.5' },
-      { name: 'currency', label: 'Token Symbol', type: 'text', placeholder: 'ETH, USDC...' },
-      { name: 'decimals', label: 'Decimals (Opt)', type: 'number', placeholder: '18', required: false },
+      { name: 'currency', label: 'Token Symbol', type: 'select', options: ['USDC', 'ETH'] },
     ],
     outputs: [{ name: 'TX_HASH', desc: 'Transaction Hash' }]
   },
   'swap_uniswap': { 
     label: 'Uniswap Swap', category: 'web3', icon: ArrowRightLeft,
     inputs: [
-      { name: 'tokenIn', label: 'Token In', type: 'text', placeholder: '0x...' },
-      { name: 'tokenOut', label: 'Token Out', type: 'text', placeholder: '0x...' },
-      { name: 'amountIn', label: 'Amount', type: 'text', placeholder: '100' },
-      { name: 'recipient', label: 'Recipient', type: 'text', placeholder: '0x...' },
-      { name: 'tokenInDecimals', label: 'In Decimals', type: 'number', placeholder: '18', required: false },
+      { name: 'tokenIn', label: 'Token In', type: 'select', options: ['ETH', 'USDC', 'WETH', 'UNI', 'LINK', 'Custom'] },
+      { name: 'tokenOut', label: 'Token Out', type: 'select', options: ['USDC', 'ETH', 'WETH', 'UNI', 'LINK', 'Custom'] },
+      { name: 'amountIn', label: 'Amount', type: 'text', placeholder: '100 or {{node_1.BALANCE}}' },
+      { name: 'recipient', label: 'Recipient Address', type: 'text', placeholder: '0x...' },
+      { name: 'customTokenIn', label: 'Custom Token In (Opt)', type: 'text', placeholder: '0x...', required: false },
+      { name: 'customTokenOut', label: 'Custom Token Out (Opt)', type: 'text', placeholder: '0x...', required: false },
+      { name: 'customDecimals', label: 'Custom Decimals (Opt)', type: 'number', placeholder: '18', required: false },
+      { name: 'customIsNative', label: 'Is Custom Native?', type: 'select', options: ['false', 'true'], required: false },
     ],
     outputs: [{ name: 'TX_HASH', desc: 'Swap Transaction Hash' }]
   },
@@ -252,8 +254,8 @@ export const NODE_TYPES: Record<string, any> = {
     label: 'Read Wallet Balance', category: 'web3', icon: Wallet,
     inputs: [
       { name: 'walletAddress', label: 'Wallet Address', type: 'text', placeholder: '0x...' },
-      { name: 'tokenAddress', label: 'Token Contract (Opt)', type: 'text', placeholder: 'Leave blank for ETH', required: false },
-      { name: 'decimals', label: 'Decimals (Opt)', type: 'number', placeholder: '18', required: false },
+      { name: 'token', label: 'Token', type: 'select', options: ['ETH', 'USDC', 'WETH', 'UNI', 'LINK', 'Custom'] },
+      { name: 'customToken', label: 'Custom Contract (Opt)', type: 'text', placeholder: '0x...', required: false },
     ],
     outputs: [{ name: 'BALANCE', desc: 'Formatted Token Balance' }]
   },

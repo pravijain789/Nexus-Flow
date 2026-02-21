@@ -222,6 +222,9 @@ export default async function workerProcessor(job: Job) {
                 context["ROW_INDEX"] = item.realIndex;
             }
 
+            // To prevent race conditions, wait a bit before starting the chain
+            await new Promise(resolve => setTimeout(resolve, 300));
+
             // Emit reset signal so frontend canvas clears previous run states in the correct room
             await emitEvent(eventRoomId, 'workflow_run_started', { timestamp: Date.now() });
 
