@@ -22,6 +22,8 @@ import { walletBalance } from "./walletBalance.js";
 import { geminiPrompt } from "./geminiPrompt.js";
 import { aiSummarizer } from "./aiSummarizer.js";
 import { aiSentiment } from "./aiSentiment.js";
+import { getMemory } from "./getMemory.js";
+import { setMemory } from "./setMemory.js";
 
 export const NODE_REGISTRY: Record<string, Function> = {
     "transfer": transfer,    
@@ -48,4 +50,6 @@ export const NODE_REGISTRY: Record<string, Function> = {
     "gemini_prompt": geminiPrompt,
     "ai_summarizer": aiSummarizer,
     "ai_sentiment": aiSentiment,
+    "set_memory": setMemory,
+    "get_memory": getMemory,
 };

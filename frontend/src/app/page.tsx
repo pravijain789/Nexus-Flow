@@ -604,12 +604,12 @@ function NexusCanvas() {
           <div className="relative">
             <Search
               size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-700"
             />
             <input
               type="text"
               placeholder="Search nodes..."
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all text-gray-700"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />

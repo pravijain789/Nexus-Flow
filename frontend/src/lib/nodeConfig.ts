@@ -1,7 +1,7 @@
 import { 
   Zap, ArrowRightLeft, Database, Calculator, MessageSquare, Mail, 
   FileSpreadsheet, Search, Globe, Rss, Fingerprint, 
-  Variable, FileJson, Calendar, Flame, Send, GitMerge, GitFork, Clock, Wallet, Sparkles, TrendingUp, FileText
+  Variable, FileJson, Calendar, Flame, Send, GitMerge, GitFork, Clock, Wallet, Sparkles, TrendingUp, FileText, Save
 } from 'lucide-react';
 
 export const CATEGORY_COLORS: Record<string, any> = {
@@ -303,5 +303,22 @@ export const NODE_TYPES: Record<string, any> = {
       { name: 'CONFIDENCE', desc: 'Score from 0-100' },
       { name: 'REASON', desc: '1-sentence explanation' }
     ] 
+  },
+  'get_memory': { 
+    label: 'Recall Memory', category: 'data', icon: Database,
+    inputs: [
+      { name: 'key', label: 'Memory Key', type: 'text', placeholder: 'last_buy_price' },
+      { name: 'defaultValue', label: 'Fallback Value (Opt)', type: 'text', placeholder: '0', required: false },
+    ],
+    outputs: [{ name: 'VALUE', desc: 'Recalled Data' }]
+  },
+
+  'set_memory': { 
+    label: 'Save Memory', category: 'data', icon: Save,
+    inputs: [
+      { name: 'key', label: 'Memory Key', type: 'text', placeholder: 'last_buy_price' },
+      { name: 'value', label: 'Value to Save', type: 'text', placeholder: '{{node_1.PRICE}}' },
+    ],
+    outputs: [{ name: 'SAVED_VALUE', desc: 'Saved Data' }]
   },
 };

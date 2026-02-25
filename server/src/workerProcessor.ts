@@ -209,7 +209,11 @@ export default async function workerProcessor(job: Job) {
         }
 
         for (const item of itemsToProcess) {
-            const context = { ...item.initialContext };
+            
+            const context = { 
+                ...item.initialContext,
+                SYSTEM_WORKFLOW_ID: workflowId 
+            };
             
             if (item.row.length > 0) {
                 item.row.forEach((val: any, idx: number) => {
